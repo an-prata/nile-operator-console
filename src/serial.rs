@@ -5,6 +5,8 @@ use std::{
     fmt::Display,
     io::{self, Read},
     string::FromUtf8Error,
+    sync::mpsc::{self, Receiver, Sender},
+    thread::{self},
     time::Duration,
 };
 
@@ -74,16 +76,16 @@ pub fn available_usb_ports() -> serialport::Result<Vec<UsbSerialPortInfo>> {
 pub fn open_field_port(
     port: &UsbSerialPortInfo,
     baud: u32,
-) -> serialport::Result<SensorFieldReader<Box<dyn SerialPort>>> {
+) -> serialport::Result<FieldReader<Box<dyn SerialPort>>> {
     let port = open_port(port, baud)?;
-    Ok(SensorFieldReader::new(port))
+    Ok(FieldReader::new(port))
 }
 
 /// Create a simulated [`SensorFieldReader`] by using a pre-filled slice of bytes as the input.
 ///
 /// [`SensorFieldReader`]: SensorFieldReader
-pub fn field_port_sim(buffer: &[u8]) -> SensorFieldReader<&[u8]> {
-    SensorFieldReader::new(buffer)
+pub fn field_port_sim(buffer: &[u8]) -> FieldReader<&[u8]> {
+    FieldReader::new(buffer)
 }
 
 /// Opens the USB port described by the given [`UsbSerialPortInfo`] for serial read/write at the
@@ -96,21 +98,150 @@ pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<
         .open()
 }
 
+/// Creates a pair of [`FieldReciever`] and [`FieldSender`], and lets [`FieldSender`] continually
+/// read and send [`SensorField`]s from a seperate thread. This function returns the associated
+/// [`FieldReciever`] to allow the recieving of read [`SensorField`]s.
+///
+/// [`SensorField`]: SensorField
+/// [`FieldSender`]: FieldSender
+/// [`FieldReciever`]: FieldReciever
+pub fn start_field_thread<R>(field_reader: FieldReader<R>) -> FieldReciever
+where
+    R: 'static + Read + Send,
+{
+    let (field_sender, field_reciever) = field_channel(field_reader);
+
+    thread::spawn(move || {
+        let mut field_sender = field_sender;
+
+        loop {
+            field_sender.send_fields().expect("Could not read fields")
+        }
+    });
+
+    field_reciever
+}
+
+/// Create a multiple producer single consumer senser reciever channel pair for [`SensorField`]s.
+///
+/// [`SensorField`]: SensorField
+pub fn field_channel<R>(field_reader: FieldReader<R>) -> (FieldSender<R>, FieldReciever)
+where
+    R: 'static + Read + Send,
+{
+    let (tx, rx) = mpsc::channel();
+
+    let sender = FieldSender {
+        reader: field_reader.reader,
+        remainder: field_reader.remainder,
+        chan_tx: tx,
+    };
+
+    let receiver = FieldReciever {
+        fields: field_reader.fields,
+        chan_rx: rx,
+    };
+
+    (sender, receiver)
+}
+
+/// A type for recieving [`SensorField`]s sent over a channel by a [`FieldSender`], which reads
+/// [`SensorField`]s.
+///
+/// [`SensorField`]: SensorField
+/// [`FieldSender`]: FieldSender
+#[derive(Debug)]
+pub struct FieldReciever {
+    fields: HashMap<String, SensorValue>,
+    chan_rx: Receiver<SensorField>,
+}
+
+/// A wrapper type over a [`Read`] instance for reading [`SensorField`]s and then sending them over
+/// a channel to a [`FieldReciever`].
+///
+/// [`Read`]: Read
+/// [`SensorField`]: SensorField
+/// [`FieldReciever`]: FieldReciever
+#[derive(Debug, Clone)]
+pub struct FieldSender<R>
+where
+    R: Read + Send,
+{
+    reader: R,
+    remainder: String,
+    chan_tx: Sender<SensorField>,
+}
+
+impl FieldReciever {
+    /// Gives an [`Iterator`] of the sensor fields of the [`FieldReciever`].
+    ///
+    /// [`Iterator`]: Iterator
+    /// [`FieldReciever`]: FieldReciever
+    pub fn fields(&self) -> hash_map::Iter<'_, String, SensorValue> {
+        self.fields.iter()
+    }
+
+    /// Gets a [`SensorValue`] by its associated [`SensorField`]'s name.
+    ///
+    /// [`SensorValue`]: SensorValue
+    /// [`SensorField`]: SensorField
+    pub fn get_field(&self, field_name: &str) -> Option<&SensorValue> {
+        self.fields.get(field_name)
+    }
+
+    /// Recieve as many fields as possible over the channel without blocking for new
+    /// [`SensorField`]s. This function will populate/update the [`FieldReciever`]'s collection
+    /// of [`SensorField`]s.
+    ///
+    /// [`SensorField`]: SensorField
+    /// [`FieldReviever`]: FieldReviever
+    pub fn recieve_fields(&mut self) {
+        while let Ok(field) = self.chan_rx.try_recv() {
+            self.fields.insert(field.name, field.value);
+        }
+    }
+}
+
+impl<R> FieldSender<R>
+where
+    R: 'static + Read + Send,
+{
+    /// Read as many [`SensorField`]s as possible from the internal [`Read`] instance and send them
+    /// over the channel for the corrosponding [`FieldReciever`].
+    ///
+    /// [`SensorField`]: SensorField
+    /// [`FieldReviever`]: FieldReviever
+    /// [`Read`]: Read
+    pub fn send_fields(&mut self) -> Result<(), SensorFieldReadError> {
+        let (remainder, fields) = read_fields(&mut self.reader, self.remainder.to_owned())?;
+        self.remainder = remainder;
+
+        for field in fields {
+            self.chan_tx
+                .send(field)
+                .expect("Expected non hung-up reciever");
+        }
+
+        Ok(())
+    }
+}
+
 /// Holds a [`Read`] as well as some internal state for reading out [`SensorField`]s.
 ///
 /// [`Read`]: Read
 /// [`SensorField`]: SensorField
-#[derive(Debug, Clone)]
-pub struct SensorFieldReader<R>
+#[derive(Debug)]
+pub struct FieldReader<R>
 where
     R: Read,
 {
     reader: R,
     remainder: String,
     fields: HashMap<String, SensorValue>,
+    chan_rx: Option<Receiver<SensorField>>,
 }
 
-impl<R> SensorFieldReader<R>
+impl<R> FieldReader<R>
 where
     R: Read,
 {
@@ -123,6 +254,7 @@ where
             reader,
             remainder: String::new(),
             fields: HashMap::new(),
+            chan_rx: None,
         }
     }
 
@@ -215,7 +347,7 @@ where
 
 #[derive(Debug)]
 pub enum SensorFieldReadError {
-    ParseError(SensorFieldParseError),
+    ParseError(FieldParseError),
     IoError(io::Error),
     Utf8Error(FromUtf8Error),
 }
@@ -267,7 +399,7 @@ impl Display for SensorValue {
 /// [`SensorValue`]: SensorValue
 /// [`SensorField`]: SensorField
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum SensorFieldParseError {
+pub enum FieldParseError {
     MissingValue,
     MissingType,
     MissingName,
@@ -276,21 +408,21 @@ pub enum SensorFieldParseError {
     ToManyTokens,
 }
 
-impl Display for SensorFieldParseError {
+impl Display for FieldParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Could not parse sensor field: ")?;
         match self {
-            SensorFieldParseError::MissingValue => write!(f, "Missing field value"),
-            SensorFieldParseError::MissingType => write!(f, "Missing field type"),
-            SensorFieldParseError::MissingName => write!(f, "Missing field name"),
-            SensorFieldParseError::InvalidType(token) => write!(f, "Invalie field type: {token}"),
-            SensorFieldParseError::InvalidValue(token) => write!(f, "Invalid value: '{token}'"),
-            SensorFieldParseError::ToManyTokens => write!(f, "To many tokens in field"),
+            FieldParseError::MissingValue => write!(f, "Missing field value"),
+            FieldParseError::MissingType => write!(f, "Missing field type"),
+            FieldParseError::MissingName => write!(f, "Missing field name"),
+            FieldParseError::InvalidType(token) => write!(f, "Invalie field type: {token}"),
+            FieldParseError::InvalidValue(token) => write!(f, "Invalid value: '{token}'"),
+            FieldParseError::ToManyTokens => write!(f, "To many tokens in field"),
         }
     }
 }
 
-impl Error for SensorFieldParseError {}
+impl Error for FieldParseError {}
 
 /// Parses a [`SensorField`] in this format:
 ///
@@ -303,15 +435,15 @@ impl Error for SensorFieldParseError {}
 ///
 /// [`SensorField`]: SensorField
 /// [`serial::parse_sensor_value`]: parse_sensor_value
-fn parse_sensor_field(s: &str) -> Result<SensorField, SensorFieldParseError> {
+fn parse_sensor_field(s: &str) -> Result<SensorField, FieldParseError> {
     let tokens: Vec<&str> = s.split(':').collect();
 
     if tokens.len() > 2 {
-        return Err(SensorFieldParseError::ToManyTokens);
+        return Err(FieldParseError::ToManyTokens);
     }
 
-    let name = tokens.first().ok_or(SensorFieldParseError::MissingName)?;
-    let value_token = tokens.get(1).ok_or(SensorFieldParseError::MissingType)?;
+    let name = tokens.first().ok_or(FieldParseError::MissingName)?;
+    let value_token = tokens.get(1).ok_or(FieldParseError::MissingType)?;
 
     Ok(SensorField {
         name: name.to_string(),
@@ -332,21 +464,21 @@ fn parse_sensor_field(s: &str) -> Result<SensorField, SensorFieldParseError> {
 ///
 /// [`SensorValue`]: SensorValue
 /// [`str::parse`]: str::parse
-fn parse_sensor_value(s: &str) -> Result<SensorValue, SensorFieldParseError> {
+fn parse_sensor_value(s: &str) -> Result<SensorValue, FieldParseError> {
     let tokens: Vec<&str> = s.split('=').collect();
 
     if tokens.len() > 2 {
-        return Err(SensorFieldParseError::ToManyTokens);
+        return Err(FieldParseError::ToManyTokens);
     }
 
-    let type_token = *tokens.first().ok_or(SensorFieldParseError::MissingType)?;
-    let value_token = *tokens.get(1).ok_or(SensorFieldParseError::MissingValue)?;
+    let type_token = *tokens.first().ok_or(FieldParseError::MissingType)?;
+    let value_token = *tokens.get(1).ok_or(FieldParseError::MissingValue)?;
 
     match type_token {
         "u" => {
             let value = value_token
                 .parse()
-                .map_err(|_| SensorFieldParseError::InvalidValue(value_token.to_string()))?;
+                .map_err(|_| FieldParseError::InvalidValue(value_token.to_string()))?;
 
             Ok(SensorValue::UnsignedInt(value))
         }
@@ -354,7 +486,7 @@ fn parse_sensor_value(s: &str) -> Result<SensorValue, SensorFieldParseError> {
         "i" => {
             let value = value_token
                 .parse()
-                .map_err(|_| SensorFieldParseError::InvalidValue(value_token.to_string()))?;
+                .map_err(|_| FieldParseError::InvalidValue(value_token.to_string()))?;
 
             Ok(SensorValue::SignedInt(value))
         }
@@ -362,7 +494,7 @@ fn parse_sensor_value(s: &str) -> Result<SensorValue, SensorFieldParseError> {
         "f" => {
             let value = value_token
                 .parse()
-                .map_err(|_| SensorFieldParseError::InvalidValue(value_token.to_string()))?;
+                .map_err(|_| FieldParseError::InvalidValue(value_token.to_string()))?;
 
             Ok(SensorValue::Float(value))
         }
@@ -371,12 +503,12 @@ fn parse_sensor_value(s: &str) -> Result<SensorValue, SensorFieldParseError> {
             let value = match value_token.to_lowercase().as_str() {
                 "true" => true,
                 "false" => false,
-                _ => return Err(SensorFieldParseError::InvalidValue(value_token.to_string())),
+                _ => return Err(FieldParseError::InvalidValue(value_token.to_string())),
             };
 
             Ok(SensorValue::Boolean(value))
         }
 
-        _ => Err(SensorFieldParseError::InvalidType(type_token.to_string())),
+        _ => Err(FieldParseError::InvalidType(type_token.to_string())),
     }
 }

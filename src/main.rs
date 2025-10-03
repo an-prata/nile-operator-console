@@ -8,6 +8,8 @@ mod gui;
 mod serial;
 
 fn main() -> eframe::Result {
+    env_logger::init();
+
     let text = "Field One:u=12\nField Two:f=-1.23\nField Three:b=True\nFi";
     let buffer = text.as_bytes();
     let field_reader = serial::field_port_sim(buffer);
@@ -19,7 +21,7 @@ fn main() -> eframe::Result {
 
 /// Prompt the user to select one of the available USB serial connections and return it. This
 /// function handles errors itself, logging them and exiting the program as a whole.
-fn get_field_reader() -> serial::SensorFieldReader<Box<dyn SerialPort>> {
+fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
     let usb_ports = match serial::available_usb_ports() {
         Ok(ports) => ports,
 

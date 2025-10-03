@@ -1,11 +1,11 @@
-use crate::serial::SensorFieldReader;
+use crate::serial::{self, FieldReader, FieldReciever};
 use eframe::egui;
 use std::{fmt::Display, io::Read};
 
 /// Starts the graphical part of the app.
-pub fn start_gui<R>(mut field_reader: SensorFieldReader<R>) -> eframe::Result
+pub fn start_gui<R>(mut field_reader: FieldReader<R>) -> eframe::Result
 where
-    R: Read,
+    R: 'static + Read + Send,
 {
     env_logger::init();
 
@@ -20,13 +20,15 @@ where
     // TODO: Call regularly in separate thread:
     field_reader.update_fields().unwrap();
 
+    let field_reciever = serial::start_field_thread(field_reader);
+
     eframe::run_native(
         "NILE Stand",
         gui_options,
         Box::new(|_| {
             Ok(Box::new(GuiApp {
                 mode: StandMode::default(),
-                field_reader,
+                field_reciever,
             }))
         }),
     )
@@ -34,31 +36,22 @@ where
 
 /// Type holding the state of the app's GUI.
 #[derive(Debug)]
-pub struct GuiApp<R>
-where
-    R: Read,
-{
+pub struct GuiApp {
     mode: StandMode,
-    field_reader: SensorFieldReader<R>,
+    field_reciever: FieldReciever,
 }
 
-impl<R> GuiApp<R>
-where
-    R: Read,
-{
+impl GuiApp {
     /// Produces text with one line per sensor field showing each field's name and value.
     fn make_fields_table(&self) -> String {
-        self.field_reader
+        self.field_reciever
             .fields()
             .map(|(name, value)| format!("{name} : {value}"))
             .fold(String::new(), |acc, s| format!("{acc}\n{s}"))
     }
 }
 
-impl<R> eframe::App for GuiApp<R>
-where
-    R: Read,
-{
+impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
