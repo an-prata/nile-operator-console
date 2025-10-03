@@ -1,4 +1,3 @@
-use eframe::egui;
 use serialport::{SerialPort, SerialPortInfo, SerialPortType, UsbPortInfo};
 use std::{
     collections::{HashMap, hash_map},
