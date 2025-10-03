@@ -1,9 +1,8 @@
 #![feature(ascii_char)]
 #![feature(iterator_try_collect)]
 
-use std::{io, process::exit};
-
 use serialport::SerialPort;
+use std::{io, process::exit};
 
 mod gui;
 mod serial;
@@ -13,9 +12,13 @@ fn main() -> eframe::Result {
     let buffer = text.as_bytes();
     let field_reader = serial::field_port_sim(buffer);
 
+    // let field_reader = get_field_reader();
+
     gui::start_gui(field_reader)
 }
 
+/// Prompt the user to select one of the available USB serial connections and return it. This
+/// function handles errors itself, logging them and exiting the program as a whole.
 fn get_field_reader() -> serial::SensorFieldReader<Box<dyn SerialPort>> {
     let usb_ports = match serial::available_usb_ports() {
         Ok(ports) => ports,
@@ -59,7 +62,7 @@ fn get_field_reader() -> serial::SensorFieldReader<Box<dyn SerialPort>> {
         }
     };
 
-    let mut field_reader = match serial::open_field_port(selected_port, 9600) {
+    let field_reader = match serial::open_field_port(selected_port, 9600) {
         Ok(p) => p,
         Err(err) => {
             log::error!("Could not open the selected port: {err}");
