@@ -106,13 +106,15 @@ where
 
                 egui::TopBottomPanel::bottom("Right Controls Panel").show_inside(right, |ui| {
                     ui.horizontal(|ui| {
-                        let fire_responce = ui.button("Fire");
-                        egui::Popup::menu(&fire_responce)
+                        // Fire button
+                        let fire_response = ui.button("Fire");
+                        egui::Popup::menu(&fire_response)
                             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                             .show(|ui| {
                                 ui.label("Firing >:3");
                             });
 
+                        // Failsafe button
                         let failsafe_response = ui.button("Failsafe");
                         egui::Popup::menu(&failsafe_response)
                             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
