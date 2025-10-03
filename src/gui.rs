@@ -7,8 +7,6 @@ pub fn start_gui<R>(mut field_reader: FieldReader<R>) -> eframe::Result
 where
     R: 'static + Read + Send,
 {
-    env_logger::init();
-
     let gui_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("NILE Stand")
@@ -16,9 +14,6 @@ where
 
         ..eframe::NativeOptions::default()
     };
-
-    // TODO: Call regularly in separate thread:
-    field_reader.update_fields().unwrap();
 
     let field_reciever = serial::start_field_thread(field_reader);
 
@@ -42,6 +37,10 @@ pub struct GuiApp {
 }
 
 impl GuiApp {
+    fn recieve_fields(&mut self) {
+        self.field_reciever.recieve_fields();
+    }
+
     /// Produces text with one line per sensor field showing each field's name and value.
     fn make_fields_table(&self) -> String {
         self.field_reciever
@@ -95,6 +94,7 @@ impl eframe::App for GuiApp {
                     })
                 });
 
+                self.recieve_fields();
                 right.label(self.make_fields_table());
 
                 egui::TopBottomPanel::bottom("Right Controls Panel").show_inside(right, |ui| {
