@@ -96,7 +96,7 @@ pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<
         .open()
 }
 
-/// Holds a [`Read`] as well as some internall state for reading out [`SensorField`]s.
+/// Holds a [`Read`] as well as some internal state for reading out [`SensorField`]s.
 ///
 /// [`Read`]: Read
 /// [`SensorField`]: SensorField

@@ -67,7 +67,7 @@ where
                     ui.label("Piping & Instrumentation Diagram:");
                 });
 
-                left.label("Hello!!! :D");
+                left.vertical_centered(|ui| ui.label("\n\n\n\nHello!!! :D"));
 
                 // Right side:
                 egui::TopBottomPanel::top("Right Column Top Panel")
