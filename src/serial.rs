@@ -197,7 +197,8 @@ impl FieldReciever {
     /// [`FieldReviever`]: FieldReviever
     pub fn recieve_fields(&mut self) {
         while let Ok(field) = self.chan_rx.try_recv() {
-            self.fields.insert(field.name, field.value);
+            let name: String = field.name.trim().chars().filter(|&c| c != '\0').collect();
+            self.fields.insert(name, field.value);
         }
     }
 }
