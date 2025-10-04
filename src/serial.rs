@@ -197,8 +197,7 @@ impl FieldReciever {
     /// [`FieldReviever`]: FieldReviever
     pub fn recieve_fields(&mut self) {
         while let Ok(field) = self.chan_rx.try_recv() {
-            let name: String = field.name.trim().chars().filter(|&c| c != '\0').collect();
-            self.fields.insert(name, field.value);
+            self.fields.insert(field.name, field.value);
         }
     }
 }
@@ -443,12 +442,24 @@ fn parse_sensor_field(s: &str) -> Result<SensorField, FieldParseError> {
         return Err(FieldParseError::ToManyTokens);
     }
 
-    let name = tokens.first().ok_or(FieldParseError::MissingName)?;
-    let value_token = tokens.get(1).ok_or(FieldParseError::MissingType)?;
+    let name: String = tokens
+        .first()
+        .ok_or(FieldParseError::MissingName)?
+        .trim()
+        .chars()
+        .filter(|&c| c != '\0')
+        .collect();
+    let value_token: String = tokens
+        .get(1)
+        .ok_or(FieldParseError::MissingType)?
+        .trim()
+        .chars()
+        .filter(|&c| c != '\0')
+        .collect();
 
     Ok(SensorField {
         name: name.to_string(),
-        value: parse_sensor_value(value_token)?,
+        value: parse_sensor_value(&value_token)?,
     })
 }
 
