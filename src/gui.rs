@@ -56,7 +56,7 @@ impl GuiApp {
 }
 
 impl eframe::App for GuiApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
                 // Left side:
@@ -135,6 +135,8 @@ impl eframe::App for GuiApp {
                 });
             });
         });
+
+        ctx.request_repaint();
     }
 }
 
