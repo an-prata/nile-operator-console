@@ -37,6 +37,11 @@ pub struct GuiApp {
 }
 
 impl GuiApp {
+    /// Have the [`GuiApp`]'s internal [`FieldReciever`] recieve [`SensorField`]s.
+    ///
+    /// [`GuiApp`]: GuiApp
+    /// [`FieldReciever`]: FieldReciever
+    /// [`SensorField`]: serial::SensorField
     fn recieve_fields(&mut self) {
         self.field_reciever.recieve_fields();
     }
