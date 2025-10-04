@@ -3,9 +3,9 @@ use std::{
     collections::{HashMap, hash_map},
     error::Error,
     fmt::Display,
-    io::{self, Read},
+    io::{self, Read, Write},
     string::FromUtf8Error,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver, SendError, Sender},
     thread::{self},
     time::Duration,
 };
@@ -107,7 +107,7 @@ pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<
 /// [`FieldReciever`]: FieldReciever
 pub fn start_field_thread<R>(field_reader: FieldReader<R>) -> FieldReciever
 where
-    R: 'static + Read + Send,
+    R: 'static + Read + Write + Send,
 {
     let (field_sender, field_reciever) = field_channel(field_reader);
 
@@ -115,7 +115,10 @@ where
         let mut field_sender = field_sender;
 
         loop {
-            field_sender.send_fields().expect("Could not read fields")
+            field_sender.send_fields().expect("Could not read fields");
+            field_sender
+                .send_commands()
+                .expect("Could not send commands");
         }
     });
 
@@ -127,19 +130,22 @@ where
 /// [`SensorField`]: SensorField
 pub fn field_channel<R>(field_reader: FieldReader<R>) -> (FieldSender<R>, FieldReciever)
 where
-    R: 'static + Read + Send,
+    R: 'static + Read + Write + Send,
 {
-    let (tx, rx) = mpsc::channel();
+    let (read_tx, read_rx) = mpsc::channel();
+    let (command_tx, command_rx) = mpsc::channel();
 
     let sender = FieldSender {
         reader: field_reader.reader,
         remainder: field_reader.remainder,
-        chan_tx: tx,
+        read_tx,
+        command_rx,
     };
 
     let receiver = FieldReciever {
         fields: field_reader.fields,
-        chan_rx: rx,
+        read_rx,
+        command_tx,
     };
 
     (sender, receiver)
@@ -153,7 +159,8 @@ where
 #[derive(Debug)]
 pub struct FieldReciever {
     fields: HashMap<String, SensorValue>,
-    chan_rx: Receiver<SensorField>,
+    read_rx: Receiver<SensorField>,
+    command_tx: Sender<ValveCommand>,
 }
 
 /// A wrapper type over a [`Read`] instance for reading [`SensorField`]s and then sending them over
@@ -162,14 +169,15 @@ pub struct FieldReciever {
 /// [`Read`]: Read
 /// [`SensorField`]: SensorField
 /// [`FieldReciever`]: FieldReciever
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FieldSender<R>
 where
-    R: Read + Send,
+    R: 'static + Read + Write + Send,
 {
     reader: R,
     remainder: String,
-    chan_tx: Sender<SensorField>,
+    read_tx: Sender<SensorField>,
+    command_rx: Receiver<ValveCommand>,
 }
 
 impl FieldReciever {
@@ -196,15 +204,23 @@ impl FieldReciever {
     /// [`SensorField`]: SensorField
     /// [`FieldReviever`]: FieldReviever
     pub fn recieve_fields(&mut self) {
-        while let Ok(field) = self.chan_rx.try_recv() {
+        while let Ok(field) = self.read_rx.try_recv() {
             self.fields.insert(field.name, field.value);
         }
+    }
+
+    /// Send a [`ValveCommand`] to the [`FieldSender`] to be sent down serial.
+    ///
+    /// [`ValveCommand`]: ValveCommand
+    /// [`FieldSender`]: FieldSender
+    pub fn send_command(&mut self, command: ValveCommand) -> Result<(), SendError<ValveCommand>> {
+        self.command_tx.send(command)
     }
 }
 
 impl<R> FieldSender<R>
 where
-    R: 'static + Read + Send,
+    R: 'static + Read + Write + Send,
 {
     /// Read as many [`SensorField`]s as possible from the internal [`Read`] instance and send them
     /// over the channel for the corrosponding [`FieldReciever`].
@@ -217,12 +233,32 @@ where
         self.remainder = remainder;
 
         for field in fields {
-            self.chan_tx
+            self.read_tx
                 .send(field)
                 .expect("Expected non hung-up reciever");
         }
 
         Ok(())
+    }
+
+    /// Recieve [`ValveCommand`]s from the [`FieldReciever`] and send them down serial.
+    ///
+    /// [`ValveCommand`]: ValveCommand
+    /// [`FieldReciever`]: FieldReciever
+    pub fn send_commands(&mut self) -> Result<(), io::Error> {
+        let mut commands: Vec<ValveCommand> = Vec::new();
+
+        while let Ok(cmd) = self.command_rx.try_recv() {
+            commands.push(cmd);
+        }
+
+        let command_buffer = commands
+            .into_iter()
+            .map(|cmd| cmd.to_string())
+            .fold(String::new(), |acc, s| format!("{acc}{s}"))
+            .into_bytes();
+
+        self.reader.write_all(&command_buffer)
     }
 }
 
@@ -238,7 +274,6 @@ where
     reader: R,
     remainder: String,
     fields: HashMap<String, SensorValue>,
-    chan_rx: Option<Receiver<SensorField>>,
 }
 
 impl<R> FieldReader<R>
@@ -254,7 +289,6 @@ where
             reader,
             remainder: String::new(),
             fields: HashMap::new(),
-            chan_rx: None,
         }
     }
 
@@ -322,10 +356,17 @@ fn read_fields<R>(
 where
     R: Read,
 {
+    const MAX_READ_RETRYS: u32 = 16;
+
     let mut buf: [u8; 1024] = [0; 1024];
 
-    r.read(&mut buf)
-        .map_err(|e| SensorFieldReadError::IoError(e))?;
+    for i in 0..=MAX_READ_RETRYS {
+        match r.read(&mut buf) {
+            Ok(_) => break,
+            Err(e) if i != MAX_READ_RETRYS && e.kind() == io::ErrorKind::TimedOut => continue,
+            Err(e) => return Err(SensorFieldReadError::IoError(e)),
+        }
+    }
 
     let read_text =
         String::from_utf8(buf.to_vec()).map_err(|e| SensorFieldReadError::Utf8Error(e))?;
@@ -339,8 +380,10 @@ where
     let fields = lines
         .into_iter()
         .map(|line| parse_sensor_field(line))
-        .try_collect()
-        .map_err(|e| SensorFieldReadError::ParseError(e))?;
+        .filter_map(Result::ok)
+        .collect();
+    // .try_collect()
+    // .map_err(|e| SensorFieldReadError::ParseError(e))?;
 
     Ok((remainder, fields))
 }
@@ -366,6 +409,16 @@ impl Display for SensorFieldReadError {
 
 impl Error for SensorFieldReadError {}
 
+/// A command for actuating valves on NILE.
+#[derive(Clone, Eq, PartialEq)]
+pub enum ValveCommand {
+    /// Open a valve with the given name.
+    Open(String),
+
+    /// Close a valve with the given name.
+    Close(String),
+}
+
 /// A field, presumably transmitted over serial representing the reading of a sensor on the NILE
 /// stand.
 #[derive(Debug, PartialEq, Clone)]
@@ -381,6 +434,19 @@ pub enum SensorValue {
     SignedInt(i64),
     Float(f64),
     Boolean(bool),
+}
+
+impl ValveCommand {
+    /// Serialize the [`ValveCommand`] into a [`String`].
+    ///
+    /// [`ValveCommand`]: ValveCommand
+    /// [`String`]: String
+    fn to_string(self) -> String {
+        match self {
+            ValveCommand::Open(name) => format!("OPEN:{name}\n"),
+            ValveCommand::Close(name) => format!("CLOSE:{name}\n"),
+        }
+    }
 }
 
 impl Display for SensorValue {

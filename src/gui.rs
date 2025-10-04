@@ -1,11 +1,14 @@
 use crate::serial::{self, FieldReader, FieldReciever, SensorValue};
 use eframe::egui;
-use std::{fmt::Display, io::Read};
+use std::{
+    fmt::Display,
+    io::{Read, Write},
+};
 
 /// Starts the graphical part of the app.
 pub fn start_gui<R>(field_reader: FieldReader<R>) -> eframe::Result
 where
-    R: 'static + Read + Send,
+    R: 'static + Read + Write + Send,
 {
     let gui_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -60,6 +63,7 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui_extras::install_image_loaders(ctx);
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
                 // Left side:
@@ -67,7 +71,21 @@ impl eframe::App for GuiApp {
                     ui.label("Piping & Instrumentation Diagram:");
                 });
 
-                left.vertical_centered(|ui| ui.label("\n\n\n\nHello!!! :D"));
+                left.image(egui::include_image!("../NILE P&ID.png"));
+
+                left.horizontal(|ui| {
+                    if ui.button("Open NP1").clicked() {
+                        self.field_reciever
+                            .send_command(serial::ValveCommand::Open("NP1".to_string()))
+                            .expect("Expected to be able to send command");
+                    }
+
+                    if ui.button("Close NP1").clicked() {
+                        self.field_reciever
+                            .send_command(serial::ValveCommand::Close("NP1".to_string()))
+                            .expect("Expected to be able to send command");
+                    }
+                });
 
                 // Right side:
                 egui::TopBottomPanel::top("Right Column Top Panel")
