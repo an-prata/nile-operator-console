@@ -3,7 +3,7 @@ use eframe::egui;
 use std::{fmt::Display, io::Read};
 
 /// Starts the graphical part of the app.
-pub fn start_gui<R>(mut field_reader: FieldReader<R>) -> eframe::Result
+pub fn start_gui<R>(field_reader: FieldReader<R>) -> eframe::Result
 where
     R: 'static + Read + Send,
 {
@@ -45,7 +45,7 @@ impl GuiApp {
     fn make_fields_table(&self) -> String {
         self.field_reciever
             .fields()
-            .map(|(name, value)| format!("{name} : {value}"))
+            .map(|(name, value)| format!("{name}: {value}"))
             .fold(String::new(), |acc, s| format!("{acc}\n{s}"))
     }
 }
@@ -65,55 +65,69 @@ impl eframe::App for GuiApp {
                 egui::TopBottomPanel::top("Right Column Top Panel")
                     .show_inside(right, |ui| ui.label("NILE Stand Telemetry:"));
 
-                right.horizontal_top(|ui| {
+                right.horizontal_wrapped(|ui| {
                     ui.label("Stand Mode: ");
 
-                    ui.menu_button(self.mode.to_string(), |ui| {
-                        if ui.button(StandMode::CheckOut.to_string()).clicked() {
-                            self.mode = StandMode::CheckOut;
-                            ui.close();
-                        }
+                    ui.centered_and_justified(|ui| {
+                        ui.menu_button(self.mode.to_string(), |ui| {
+                            if ui.button(StandMode::CheckOut.to_string()).clicked() {
+                                self.mode = StandMode::CheckOut;
+                                ui.close();
+                            }
 
-                        if ui.button(StandMode::OxFilling.to_string()).clicked() {
-                            self.mode = StandMode::OxFilling;
-                            ui.close();
-                        }
+                            if ui.button(StandMode::OxFilling.to_string()).clicked() {
+                                self.mode = StandMode::OxFilling;
+                                ui.close();
+                            }
 
-                        if ui
-                            .button(StandMode::PressurizationAndFiring.to_string())
-                            .clicked()
-                        {
-                            self.mode = StandMode::PressurizationAndFiring;
-                            ui.close();
-                        }
+                            if ui
+                                .button(StandMode::PressurizationAndFiring.to_string())
+                                .clicked()
+                            {
+                                self.mode = StandMode::PressurizationAndFiring;
+                                ui.close();
+                            }
 
-                        if ui.button(StandMode::Safing.to_string()).clicked() {
-                            self.mode = StandMode::Safing;
-                            ui.close();
-                        }
+                            if ui.button(StandMode::Safing.to_string()).clicked() {
+                                self.mode = StandMode::Safing;
+                                ui.close();
+                            }
+                        })
                     })
                 });
 
                 self.recieve_fields();
-                right.label(self.make_fields_table());
 
-                egui::TopBottomPanel::bottom("Right Controls Panel").show_inside(right, |ui| {
-                    ui.horizontal(|ui| {
-                        // Fire button
-                        let fire_response = ui.button("Fire");
-                        egui::Popup::menu(&fire_response)
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                            .show(|ui| {
-                                ui.label("Firing >:3");
+                right.vertical(|ui| {
+                    egui::ScrollArea::both().show(ui, |ui| {
+                        ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+                        ui.label(self.make_fields_table());
+                    });
+                });
+
+                egui::TopBottomPanel::bottom("Controls Panel").show_inside(right, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.columns_const(|[left, right]| {
+                            // Fire button
+                            left.centered_and_justified(|ui| {
+                                let fire_response = ui.button("Fire");
+                                egui::Popup::menu(&fire_response)
+                                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                    .show(|ui| {
+                                        ui.label("Firing >:3");
+                                    });
                             });
 
-                        // Failsafe button
-                        let failsafe_response = ui.button("Failsafe");
-                        egui::Popup::menu(&failsafe_response)
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                            .show(|ui| ui.label("Oh no! Stop the dangerous thing! :o"))
-                    })
-                })
+                            // Failsafe button
+                            right.centered_and_justified(|ui| {
+                                let failsafe_response = ui.button("Failsafe");
+                                egui::Popup::menu(&failsafe_response)
+                                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                    .show(|ui| ui.label("Oh no! Stop the dangerous thing! :o"))
+                            });
+                        });
+                    });
+                });
             });
         });
     }
