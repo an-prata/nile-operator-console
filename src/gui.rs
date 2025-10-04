@@ -23,7 +23,9 @@ where
     eframe::run_native(
         "NILE Stand",
         gui_options,
-        Box::new(|_| {
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+
             Ok(Box::new(GuiApp {
                 mode: StandMode::default(),
                 field_reciever,
@@ -63,7 +65,6 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui_extras::install_image_loaders(ctx);
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
                 // Left side:
@@ -73,17 +74,35 @@ impl eframe::App for GuiApp {
 
                 left.image(egui::include_image!("../NILE P&ID.png"));
 
-                left.horizontal(|ui| {
-                    if ui.button("Open NP1").clicked() {
-                        self.field_reciever
-                            .send_command(serial::ValveCommand::Open("NP1".to_string()))
-                            .expect("Expected to be able to send command");
-                    }
+                egui::TopBottomPanel::bottom("Valve Control Panel").show_inside(left, |ui| {
+                    for valve in [
+                        serial::NILE_STAND_NP1,
+                        serial::NILE_STAND_NP2,
+                        serial::NILE_STAND_NP3,
+                        serial::NILE_STAND_NP4,
+                        serial::NILE_STAND_IP1,
+                        serial::NILE_STAND_IP2,
+                        serial::NILE_STAND_IP3,
+                    ] {
+                        ui.horizontal(|ui| {
+                            ui.columns_const(|[left, right]| {
+                                left.centered_and_justified(|ui| {
+                                    if ui.button(format!("Open {valve}")).clicked() {
+                                        self.field_reciever
+                                            .send_command(serial::ValveCommand::Open(valve))
+                                            .expect("Expected to be able to send command");
+                                    }
+                                });
 
-                    if ui.button("Close NP1").clicked() {
-                        self.field_reciever
-                            .send_command(serial::ValveCommand::Close("NP1".to_string()))
-                            .expect("Expected to be able to send command");
+                                right.centered_and_justified(|ui| {
+                                    if ui.button(format!("Close {valve}")).clicked() {
+                                        self.field_reciever
+                                            .send_command(serial::ValveCommand::Close(valve))
+                                            .expect("Expected to be able to send command");
+                                    }
+                                });
+                            })
+                        });
                     }
                 });
 

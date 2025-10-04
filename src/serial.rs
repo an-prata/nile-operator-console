@@ -409,14 +409,23 @@ impl Display for SensorFieldReadError {
 
 impl Error for SensorFieldReadError {}
 
+pub const NILE_STAND_NP1: &'static str = "NP1";
+pub const NILE_STAND_NP2: &'static str = "NP2";
+pub const NILE_STAND_NP3: &'static str = "NP3";
+pub const NILE_STAND_NP4: &'static str = "NP4";
+
+pub const NILE_STAND_IP1: &'static str = "IP1";
+pub const NILE_STAND_IP2: &'static str = "IP2";
+pub const NILE_STAND_IP3: &'static str = "IP3";
+
 /// A command for actuating valves on NILE.
 #[derive(Clone, Eq, PartialEq)]
 pub enum ValveCommand {
     /// Open a valve with the given name.
-    Open(String),
+    Open(&'static str),
 
     /// Close a valve with the given name.
-    Close(String),
+    Close(&'static str),
 }
 
 /// A field, presumably transmitted over serial representing the reading of a sensor on the NILE
