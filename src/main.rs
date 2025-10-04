@@ -9,14 +9,7 @@ mod serial;
 
 fn main() -> eframe::Result {
     env_logger::init();
-
-    let text = "Field One:u=12\nField Two:f=-1.23\nField Three:b=True\nFi";
-    let buffer = text.as_bytes();
-    let field_reader = serial::field_port_sim(buffer);
-
-    // let field_reader = get_field_reader();
-
-    gui::start_gui(field_reader)
+    gui::start_gui(get_field_reader())
 }
 
 /// Prompt the user to select one of the available USB serial connections and return it. This
