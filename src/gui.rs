@@ -1,4 +1,4 @@
-use crate::serial::{self, FieldReader, FieldReciever};
+use crate::serial::{self, FieldReader, FieldReciever, SensorValue};
 use eframe::egui;
 use std::{fmt::Display, io::Read};
 
@@ -48,8 +48,11 @@ impl GuiApp {
 
     /// Produces text with one line per sensor field showing each field's name and value.
     fn make_fields_table(&self) -> String {
-        self.field_reciever
-            .fields()
+        let mut fields: Vec<(&String, &SensorValue)> = self.field_reciever.fields().collect();
+        fields.sort_unstable_by_key(|(k, _)| k.to_owned());
+
+        fields
+            .into_iter()
             .map(|(name, value)| format!("{name}: {value}"))
             .fold(String::new(), |acc, s| format!("{acc}\n{s}"))
     }
