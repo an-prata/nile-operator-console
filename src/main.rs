@@ -5,6 +5,7 @@ use serialport::SerialPort;
 use std::{io, process::exit};
 
 mod gui;
+mod sequence;
 mod serial;
 
 fn main() -> eframe::Result {
@@ -57,7 +58,7 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
         }
     };
 
-    let field_reader = match serial::open_field_port(selected_port, 9600) {
+    let field_reader = match serial::open_field_port(selected_port, 115200) {
         Ok(p) => p,
         Err(err) => {
             log::error!("Could not open the selected port: {err}");
