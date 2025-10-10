@@ -1,6 +1,5 @@
 use serialport::{SerialPort, SerialPortInfo, SerialPortType, UsbPortInfo};
 use std::{
-    ascii::AsciiExt,
     collections::{HashMap, hash_map},
     error::Error,
     fmt::Display,

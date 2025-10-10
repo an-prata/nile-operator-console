@@ -1,5 +1,5 @@
 use crate::{
-    sequence::{self, Command, CommandSequence, ValveHandle},
+    sequence::{Command, CommandSequence, ValveHandle},
     serial::{self, FieldReader, FieldReciever, SensorValue},
 };
 use eframe::egui;
