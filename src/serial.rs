@@ -1,14 +1,21 @@
 use serialport::{SerialPort, SerialPortInfo, SerialPortType, UsbPortInfo};
 use std::{
+    ascii::AsciiExt,
     collections::{HashMap, hash_map},
     error::Error,
     fmt::Display,
     io::{self, Read, Write},
     string::FromUtf8Error,
     sync::mpsc::{self, Receiver, SendError, Sender},
-    thread::{self},
+    thread::{self, JoinHandle},
     time::Duration,
 };
+
+use crate::sequence::CommandSequence;
+
+const CHECKED_FIELD_NAMES: [&'static str; 8] = [
+    "Field 1", "Field 2", "Field 3", "NP1_OPEN", "NP2_OPEN", "NP3_OPEN", "NP4_OPEN", "IP1_OPEN",
+];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
 /// Since this in encoded in the type of the struct the `port_type` field is omitted, and in its
@@ -160,7 +167,7 @@ where
 pub struct FieldReciever {
     fields: HashMap<String, SensorValue>,
     read_rx: Receiver<SensorField>,
-    command_tx: Sender<ValveCommand>,
+    command_tx: Sender<Vec<u8>>,
 }
 
 /// A wrapper type over a [`Read`] instance for reading [`SensorField`]s and then sending them over
@@ -177,7 +184,7 @@ where
     reader: R,
     remainder: String,
     read_tx: Sender<SensorField>,
-    command_rx: Receiver<ValveCommand>,
+    command_rx: Receiver<Vec<u8>>,
 }
 
 impl FieldReciever {
@@ -213,8 +220,28 @@ impl FieldReciever {
     ///
     /// [`ValveCommand`]: ValveCommand
     /// [`FieldSender`]: FieldSender
-    pub fn send_command(&mut self, command: ValveCommand) -> Result<(), SendError<ValveCommand>> {
-        self.command_tx.send(command)
+    pub fn send_command(&mut self, command: ValveCommand) -> Result<(), SendError<Vec<u8>>> {
+        self.command_tx.send(command.to_string().into_bytes())
+    }
+
+    /// Run the given [`CommandSequence`] in the context of the given [`FieldReciever`].
+    ///
+    /// [`CommandSequence`]: CommandSequence
+    /// [`FieldReciever`]: FieldReciever
+    pub fn run_sequence(&self, seq: CommandSequence) -> Result<(), SendError<Vec<u8>>> {
+        seq.run(self.command_tx.clone())
+    }
+
+    /// Run the given [`CommandSequence`] in the context of the given [`FieldReciever`], in a new
+    /// thread.
+    ///
+    /// [`CommandSequence`]: CommandSequence
+    /// [`FieldReciever`]: FieldReciever
+    pub fn run_sequence_par(
+        &self,
+        seq: CommandSequence,
+    ) -> JoinHandle<Result<(), SendError<Vec<u8>>>> {
+        seq.run_par(self.command_tx.clone())
     }
 }
 
@@ -246,19 +273,14 @@ where
     /// [`ValveCommand`]: ValveCommand
     /// [`FieldReciever`]: FieldReciever
     pub fn send_commands(&mut self) -> Result<(), io::Error> {
-        let mut commands: Vec<ValveCommand> = Vec::new();
+        let mut commands: Vec<u8> = vec!['\n' as u8];
 
-        while let Ok(cmd) = self.command_rx.try_recv() {
-            commands.push(cmd);
+        while let Ok(mut cmd) = self.command_rx.try_recv() {
+            commands.append(&mut cmd);
+            commands.push('\n' as u8)
         }
 
-        let command_buffer = commands
-            .into_iter()
-            .map(|cmd| cmd.to_string())
-            .fold(String::new(), |acc, s| format!("{acc}{s}"))
-            .into_bytes();
-
-        self.reader.write_all(&command_buffer)
+        self.reader.write_all(&commands)
     }
 }
 
@@ -368,8 +390,8 @@ where
         }
     }
 
-    let read_text =
-        String::from_utf8(buf.to_vec()).map_err(|e| SensorFieldReadError::Utf8Error(e))?;
+    let filtered_buf: Vec<u8> = buf.into_iter().filter(|&b| b != 0).collect();
+    let read_text = unsafe { String::from_utf8_unchecked(filtered_buf) };
 
     // Append the previous iteration's remainder in order to complete the first line.
     let text = format!("{remainder}{read_text}");
@@ -381,6 +403,7 @@ where
         .into_iter()
         .map(|line| parse_sensor_field(line))
         .filter_map(Result::ok)
+        .filter(|field| CHECKED_FIELD_NAMES.contains(&field.name.as_str()))
         .collect();
     // .try_collect()
     // .map_err(|e| SensorFieldReadError::ParseError(e))?;
@@ -409,14 +432,14 @@ impl Display for SensorFieldReadError {
 
 impl Error for SensorFieldReadError {}
 
-pub const NILE_STAND_NP1: &'static str = "NP1";
-pub const NILE_STAND_NP2: &'static str = "NP2";
-pub const NILE_STAND_NP3: &'static str = "NP3";
-pub const NILE_STAND_NP4: &'static str = "NP4";
+pub const NILE_VALVE_NP1: &'static str = "NP1";
+pub const NILE_VALVE_NP2: &'static str = "NP2";
+pub const NILE_VALVE_NP3: &'static str = "NP3";
+pub const NILE_VALVE_NP4: &'static str = "NP4";
 
-pub const NILE_STAND_IP1: &'static str = "IP1";
-pub const NILE_STAND_IP2: &'static str = "IP2";
-pub const NILE_STAND_IP3: &'static str = "IP3";
+pub const NILE_VALVE_IP1: &'static str = "IP1";
+pub const NILE_VALVE_IP2: &'static str = "IP2";
+pub const NILE_VALVE_IP3: &'static str = "IP3";
 
 /// A command for actuating valves on NILE.
 #[derive(Clone, Eq, PartialEq)]
@@ -452,8 +475,8 @@ impl ValveCommand {
     /// [`String`]: String
     fn to_string(self) -> String {
         match self {
-            ValveCommand::Open(name) => format!("OPEN:{name}\n"),
-            ValveCommand::Close(name) => format!("CLOSE:{name}\n"),
+            ValveCommand::Open(name) => format!("\nOPEN:{name}\n"),
+            ValveCommand::Close(name) => format!("\nCLOSE:{name}\n"),
         }
     }
 }
