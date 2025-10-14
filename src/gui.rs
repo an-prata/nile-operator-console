@@ -120,6 +120,7 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Asses stand state:
         let fields: Vec<SensorField> = self
             .field_reciever
             .fields()
@@ -131,6 +132,7 @@ impl eframe::App for GuiApp {
 
         self.stand_state = StandState::from_fields(&fields);
 
+        // Popup for when ox filling mode transition fails:
         if self.ox_fail_popup {
             ctx.show_viewport_immediate(
                 egui::ViewportId::from_hash_of("The Oxen Are Unhappy"),
@@ -157,6 +159,7 @@ impl eframe::App for GuiApp {
             );
         }
 
+        // Main view:
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
                 // Left side:
