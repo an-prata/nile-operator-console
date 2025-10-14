@@ -7,6 +7,7 @@ use std::{io, process::exit};
 mod gui;
 mod sequence;
 mod serial;
+mod stand;
 
 fn main() -> eframe::Result {
     simplelog::TermLogger::init(

@@ -1,6 +1,7 @@
 use crate::{
     sequence::{Command, CommandSequence, ValveHandle},
-    serial::{self, FieldReader, FieldReciever, SensorValue},
+    serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
+    stand::{StandState, ValveState},
 };
 use eframe::egui::{self, Color32};
 use std::{
@@ -32,6 +33,10 @@ where
 
             Ok(Box::new(GuiApp {
                 mode: StandMode::default(),
+                stand_state: StandState::default(),
+
+                ox_fail_popup: false,
+
                 fire_time_text: "Enter fire time.".to_string(),
                 fire_time: Duration::default(),
                 field_reciever,
@@ -44,6 +49,10 @@ where
 #[derive(Debug)]
 pub struct GuiApp {
     mode: StandMode,
+    stand_state: StandState,
+
+    ox_fail_popup: bool,
+
     fire_time_text: String,
     fire_time: Duration,
     field_reciever: FieldReciever,
@@ -71,12 +80,28 @@ impl GuiApp {
     }
 
     /// Set the mode and perform setup behaviors.
-    fn set_mode(&mut self, mode: StandMode) {
+    fn set_mode(&mut self, ctx: &egui::Context, mode: StandMode) {
         match mode {
             StandMode::CheckOut => self.mode = StandMode::CheckOut,
 
             // TODO: Check beginning state and reject transition if not matching.
-            StandMode::OxygenFilling => self.mode = StandMode::OxygenFilling,
+            StandMode::OxygenFilling => match self.stand_state {
+                StandState {
+                    valve_np1: Some(ValveState::Closed),
+                    valve_np2: Some(ValveState::Closed),
+                    valve_np3: Some(ValveState::Closed),
+                    valve_np4: Some(ValveState::Closed),
+
+                    valve_ip1: Some(ValveState::Closed),
+                    valve_ip2: Some(ValveState::Closed),
+                    valve_ip3: Some(ValveState::Closed),
+                    ..
+                } => self.mode = StandMode::OxygenFilling,
+
+                _ => {
+                    self.ox_fail_popup = true;
+                }
+            },
 
             StandMode::PressurizationAndFiring => self.mode = StandMode::PressurizationAndFiring,
 
@@ -95,6 +120,43 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let fields: Vec<SensorField> = self
+            .field_reciever
+            .fields()
+            .map(|(name, &value)| SensorField {
+                name: name.clone(),
+                value,
+            })
+            .collect();
+
+        self.stand_state = StandState::from_fields(&fields);
+
+        if self.ox_fail_popup {
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("The Oxen Are Unhappy"),
+                egui::ViewportBuilder::default()
+                    .with_title("The Oxen Are Unhappy")
+                    .with_inner_size([400.0, 300.0])
+                    .with_resizable(false),
+                |ctx, class| {
+                    assert!(
+                        class == egui::ViewportClass::Immediate,
+                        "This egui backend doesn't support multiple viewports"
+                    );
+
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.label("The Oxen where unhappy with your offering of valve states.");
+                        ui.image(egui::include_image!("../ox.jpg"));
+                        ui.label("Please close all valves.");
+                    });
+
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.ox_fail_popup = false;
+                    }
+                },
+            );
+        }
+
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
                 // Left side:
@@ -138,12 +200,12 @@ impl eframe::App for GuiApp {
                     ui.centered_and_justified(|ui| {
                         ui.menu_button(self.mode.to_string(), |ui| {
                             if ui.button(StandMode::CheckOut.to_string()).clicked() {
-                                self.set_mode(StandMode::CheckOut);
+                                self.set_mode(ctx, StandMode::CheckOut);
                                 ui.close();
                             }
 
                             if ui.button(StandMode::OxygenFilling.to_string()).clicked() {
-                                self.set_mode(StandMode::OxygenFilling);
+                                self.set_mode(ctx, StandMode::OxygenFilling);
                                 ui.close();
                             }
 
@@ -151,12 +213,12 @@ impl eframe::App for GuiApp {
                                 .button(StandMode::PressurizationAndFiring.to_string())
                                 .clicked()
                             {
-                                self.set_mode(StandMode::PressurizationAndFiring);
+                                self.set_mode(ctx, StandMode::PressurizationAndFiring);
                                 ui.close();
                             }
 
                             if ui.button(StandMode::Safing.to_string()).clicked() {
-                                self.set_mode(StandMode::Safing);
+                                self.set_mode(ctx, StandMode::Safing);
                                 ui.close();
                             }
                         })
@@ -261,7 +323,7 @@ impl eframe::App for GuiApp {
                                 )
                                 .clicked()
                             {
-                                self.set_mode(StandMode::Safing);
+                                self.set_mode(ctx, StandMode::Safing);
                             }
                         });
                     });
