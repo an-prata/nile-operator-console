@@ -5,8 +5,15 @@ use std::{
     time::Duration,
 };
 
+/// A sequence of [`Command`]s which are executable asyncronously.
+///
+/// [`Command`]: Command
 #[derive(Debug, Default)]
 pub struct CommandSequence {
+    /// Ordered list of the [`Command`]s in this [`CommandSequence`].
+    ///
+    /// [`CommandSequence`]: CommandSequence
+    /// [`Command`]: Command
     commands: Vec<Command>,
 }
 
@@ -50,6 +57,7 @@ impl CommandSequence {
     }
 }
 
+/// A command that can be sent over serial to the NILE test stand.
 #[derive(Debug)]
 pub enum Command {
     OpenValve(ValveHandle),
@@ -58,35 +66,43 @@ pub enum Command {
     Safe,
     Fire,
     Wait(Duration),
+    Done,
 }
 
 impl Command {
-    /// Run the given [`Command`], sending thm to the given [`Sender`].
+    /// Run the given [`Command`], sending them to the given [`Sender`].
     ///
     /// [`Command`]: Command
     /// [`Sender`]: Sender
     fn run(self, tx: &mut Sender<Vec<u8>>) -> Result<(), SendError<Vec<u8>>> {
         match self {
             Command::OpenValve(valve_handle) => {
-                tx.send(format!("OPEN:{valve_handle}\n").into_bytes())
+                tx.send(format!("\nOPEN:{valve_handle}\n").into_bytes())
             }
 
             Command::CloseValve(valve_handle) => {
-                tx.send(format!("CLOSE:{valve_handle}\n").into_bytes())
+                tx.send(format!("\nCLOSE:{valve_handle}\n").into_bytes())
             }
 
-            Command::Ignite => tx.send("IGNITE\n".to_string().into_bytes()),
-            Command::Safe => tx.send("SAFE\n".to_string().into_bytes()),
-            Command::Fire => tx.send("FIRE\n".to_string().into_bytes()),
+            Command::Ignite => tx.send("\nIGNITE\n".to_string().into_bytes()),
+            Command::Safe => tx.send("\nSAFE\n".to_string().into_bytes()),
+            Command::Fire => tx.send("\nFIRE\n".to_string().into_bytes()),
 
             Command::Wait(duration) => {
                 thread::sleep(duration);
+                Ok(())
+            }
+
+            Command::Done => {
+                thread::sleep(Duration::from_millis(500));
+                log::info!("Finished sequence!");
                 Ok(())
             }
         }
     }
 }
 
+/// A "handle" to a valve present on the NILE test stand.
 #[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum ValveHandle {
     NP1,

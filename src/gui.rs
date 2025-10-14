@@ -2,7 +2,7 @@ use crate::{
     sequence::{Command, CommandSequence, ValveHandle},
     serial::{self, FieldReader, FieldReciever, SensorValue},
 };
-use eframe::egui;
+use eframe::egui::{self, Color32};
 use std::{
     fmt::Display,
     io::{Read, Write},
@@ -32,6 +32,8 @@ where
 
             Ok(Box::new(GuiApp {
                 mode: StandMode::default(),
+                fire_time_text: "Enter fire time.".to_string(),
+                fire_time: Duration::default(),
                 field_reciever,
             }))
         }),
@@ -42,6 +44,8 @@ where
 #[derive(Debug)]
 pub struct GuiApp {
     mode: StandMode,
+    fire_time_text: String,
+    fire_time: Duration,
     field_reciever: FieldReciever,
 }
 
@@ -71,7 +75,7 @@ impl GuiApp {
         match mode {
             StandMode::CheckOut => self.mode = StandMode::CheckOut,
 
-            // Check beginning state and reject transition if not matching.
+            // TODO: Check beginning state and reject transition if not matching.
             StandMode::OxygenFilling => self.mode = StandMode::OxygenFilling,
 
             StandMode::PressurizationAndFiring => self.mode = StandMode::PressurizationAndFiring,
@@ -171,56 +175,78 @@ impl eframe::App for GuiApp {
                 egui::TopBottomPanel::bottom("Controls Panel").show_inside(right, |ui| {
                     match self.mode {
                         StandMode::Safing => {
-                            if ui.button("Depressurize System").clicked() {
-                                let seq = CommandSequence::new()
-                                    .then(Command::OpenValve(ValveHandle::NP4))
-                                    .then(Command::Wait(Duration::from_secs(5)))
-                                    .then(Command::CloseValve(ValveHandle::NP4))
-                                    .then(Command::Wait(Duration::from_secs(1)))
-                                    .then(Command::OpenValve(ValveHandle::IP2))
-                                    .then(Command::Wait(Duration::from_secs(5)))
-                                    .then(Command::CloseValve(ValveHandle::IP2))
-                                    .then(Command::Wait(Duration::from_secs(1)))
-                                    .then(Command::OpenValve(ValveHandle::NP2))
-                                    .then(Command::Wait(Duration::from_secs(5)))
-                                    .then(Command::CloseValve(ValveHandle::NP2))
-                                    .then(Command::Wait(Duration::from_secs(1)));
+                            ui.horizontal_wrapped(|ui| {
+                                ui.centered_and_justified(|ui| {
+                                    if ui.button("Depressurize System").clicked() {
+                                        let seq = CommandSequence::new()
+                                            .then(Command::OpenValve(ValveHandle::NP4))
+                                            .then(Command::Wait(Duration::from_secs(5)))
+                                            .then(Command::CloseValve(ValveHandle::NP4))
+                                            .then(Command::Wait(Duration::from_secs(1)))
+                                            .then(Command::OpenValve(ValveHandle::IP2))
+                                            .then(Command::Wait(Duration::from_secs(5)))
+                                            .then(Command::CloseValve(ValveHandle::IP2))
+                                            .then(Command::Wait(Duration::from_secs(1)))
+                                            .then(Command::OpenValve(ValveHandle::NP2))
+                                            .then(Command::Wait(Duration::from_secs(5)))
+                                            .then(Command::CloseValve(ValveHandle::NP2))
+                                            .then(Command::Wait(Duration::from_secs(1)))
+                                            .then(Command::Done);
 
-                                self.field_reciever.run_sequence_par(seq);
-                            }
+                                        self.field_reciever.run_sequence_par(seq);
+                                    }
+                                });
+                            });
                         }
 
                         StandMode::PressurizationAndFiring => {
-                            if ui.button("Fire").clicked() {
-                                // take time from op
-                                //
-                                // ignite ignitor
-                                // wait some period of time
-                                // open NP1 and IP1
-                                // wait time from op
-                                // wait three seconds
-                                //
-                                // close NP1 IP1 NP2 IP2 all at once
-                                // open NP3 IP3 to vent
+                            ui.horizontal(|ui| {
+                                let fire_time_text_res =
+                                    ui.text_edit_singleline(&mut self.fire_time_text);
 
-                                let wait_time = Duration::from_secs(1);
-                                let wait_time_from_op = Duration::from_secs(1);
-                                let seq = CommandSequence::new()
-                                    .then(Command::Ignite)
-                                    .then(Command::Wait(wait_time))
-                                    .then(Command::OpenValve(ValveHandle::NP1))
-                                    .then(Command::OpenValve(ValveHandle::IP1))
-                                    .then(Command::Wait(wait_time_from_op))
-                                    .then(Command::Wait(Duration::from_secs(3)))
-                                    .then(Command::CloseValve(ValveHandle::NP1))
-                                    .then(Command::CloseValve(ValveHandle::IP1))
-                                    .then(Command::CloseValve(ValveHandle::NP2))
-                                    .then(Command::CloseValve(ValveHandle::IP2))
-                                    .then(Command::OpenValve(ValveHandle::NP3))
-                                    .then(Command::OpenValve(ValveHandle::IP3));
+                                if let Ok(t) = self.fire_time_text.parse() {
+                                    self.fire_time = Duration::from_secs_f64(t);
+                                } else if fire_time_text_res.lost_focus() {
+                                    self.fire_time_text = "Enter fire time.".to_string();
+                                }
 
-                                self.field_reciever.run_sequence_par(seq);
-                            }
+                                if ui
+                                    .add(
+                                        egui::Button::new("Fire")
+                                            .fill(Color32::from_rgb(64, 128, 64)),
+                                    )
+                                    .clicked()
+                                {
+                                    // take time from op
+                                    //
+                                    // ignite ignitor
+                                    // wait some period of time
+                                    // open NP1 and IP1
+                                    // wait time from op
+                                    // wait three seconds
+                                    //
+                                    // close NP1 IP1 NP2 IP2 all at once
+                                    // open NP3 IP3 to vent
+
+                                    let wait_time = Duration::from_secs(1);
+                                    let seq = CommandSequence::new()
+                                        .then(Command::Ignite)
+                                        .then(Command::Wait(wait_time))
+                                        .then(Command::OpenValve(ValveHandle::NP1))
+                                        .then(Command::OpenValve(ValveHandle::IP1))
+                                        .then(Command::Wait(self.fire_time))
+                                        .then(Command::Wait(Duration::from_secs(3)))
+                                        .then(Command::CloseValve(ValveHandle::NP1))
+                                        .then(Command::CloseValve(ValveHandle::IP1))
+                                        .then(Command::CloseValve(ValveHandle::NP2))
+                                        .then(Command::CloseValve(ValveHandle::IP2))
+                                        .then(Command::OpenValve(ValveHandle::NP3))
+                                        .then(Command::OpenValve(ValveHandle::IP3))
+                                        .then(Command::Done);
+
+                                    self.field_reciever.run_sequence_par(seq);
+                                }
+                            });
                         }
 
                         _ => (),
@@ -228,7 +254,13 @@ impl eframe::App for GuiApp {
 
                     ui.horizontal_wrapped(|ui| {
                         ui.centered_and_justified(|ui| {
-                            if ui.button("Failsafe").clicked() {
+                            if ui
+                                .add(
+                                    egui::Button::new("Failsafe")
+                                        .fill(Color32::from_rgb(182, 96, 96)),
+                                )
+                                .clicked()
+                            {
                                 self.set_mode(StandMode::Safing);
                             }
                         });

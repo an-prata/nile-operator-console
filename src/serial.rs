@@ -275,6 +275,11 @@ where
         let mut commands: Vec<u8> = vec!['\n' as u8];
 
         while let Ok(mut cmd) = self.command_rx.try_recv() {
+            log::info!(
+                "Sending command: {}",
+                String::from_utf8(cmd.clone()).unwrap().trim()
+            );
+
             commands.append(&mut cmd);
             commands.push('\n' as u8)
         }
@@ -390,7 +395,13 @@ where
     }
 
     let filtered_buf: Vec<u8> = buf.into_iter().filter(|&b| b != 0).collect();
-    let read_text = unsafe { String::from_utf8_unchecked(filtered_buf) };
+    let read_text = match String::from_utf8(filtered_buf) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Bad serial read: {e}");
+            String::default()
+        }
+    };
 
     // Append the previous iteration's remainder in order to complete the first line.
     let text = format!("{remainder}{read_text}");
@@ -503,6 +514,7 @@ pub enum FieldParseError {
     InvalidType(String),
     InvalidValue(String),
     ToManyTokens,
+    BadChars,
 }
 
 impl Display for FieldParseError {
@@ -515,6 +527,7 @@ impl Display for FieldParseError {
             FieldParseError::InvalidType(token) => write!(f, "Invalie field type: {token}"),
             FieldParseError::InvalidValue(token) => write!(f, "Invalid value: '{token}'"),
             FieldParseError::ToManyTokens => write!(f, "To many tokens in field"),
+            FieldParseError::BadChars => write!(f, "Serial data could not be understood as text"),
         }
     }
 }

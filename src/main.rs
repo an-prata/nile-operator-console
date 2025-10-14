@@ -9,7 +9,14 @@ mod sequence;
 mod serial;
 
 fn main() -> eframe::Result {
-    env_logger::init();
+    simplelog::TermLogger::init(
+        log::LevelFilter::Info,
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
+    )
+    .expect("Could not initialize logging");
+
     gui::start_gui(get_field_reader())
 }
 
