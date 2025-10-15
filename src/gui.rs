@@ -81,9 +81,9 @@ impl GuiApp {
 
     /// Set the mode and perform setup behaviors.
     fn set_mode(&mut self, mode: StandMode) {
-        match self.mode {
-            // If leaving ox filling mode make sure the valves are closed.
-            StandMode::OxygenFilling => match self.stand_state {
+        if self.mode == StandMode::OxygenFilling {
+            // Check that valves are closed when leaving ox filling mode
+            match self.stand_state {
                 StandState {
                     valve_np3: Some(ValveState::Closed),
                     valve_np4: Some(ValveState::Closed),
@@ -94,10 +94,8 @@ impl GuiApp {
                 }
 
                 _ => (),
-            },
-
-            _ => (),
-        };
+            }
+        }
 
         match mode {
             StandMode::CheckOut => self.mode = StandMode::CheckOut,
