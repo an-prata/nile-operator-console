@@ -79,6 +79,62 @@ impl GuiApp {
             .fold(String::new(), |acc, s| format!("{acc}\n{s}"))
     }
 
+    /// Update the [`GuiApp`]'s internal record of the NILE stand's state.
+    ///
+    /// [`GuiApp`]: GuiApp
+    fn update_stand_state(&mut self) {
+        let fields: Vec<SensorField> = self
+            .field_reciever
+            .fields()
+            .map(|(name, &value)| SensorField {
+                name: name.clone(),
+                value,
+            })
+            .collect();
+
+        self.stand_state = StandState::from_fields(&fields);
+    }
+
+    /// Logs the failure to switch modes from/to [`StandMode::OxygenFilling`] and sets the failure
+    /// popup window to be visible.
+    ///
+    /// [`StandMode::OxygenFilling`]: StandMode::OxygenFilling
+    fn handle_oxygen_filling_failure(&mut self) {
+        self.ox_fail_popup = true;
+        log::error!("The oxen have been angered ...");
+    }
+
+    /// Show the popup for notifying of failure to switch to/from [`StandMode::OxygenFilling`].
+    ///
+    /// [`StandMode::OxygenFilling`]: StandMode::OxygenFilling
+    fn show_oxygen_filling_failure_popup(&mut self, ctx: &egui::Context) {
+        let title = "The Oxen Are Unhappy";
+
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of(title),
+            egui::ViewportBuilder::default()
+                .with_title(title)
+                .with_inner_size([400.0, 300.0])
+                .with_resizable(false),
+            |ctx, class| {
+                assert!(
+                    class == egui::ViewportClass::Immediate,
+                    "This egui backend doesn't support multiple viewports"
+                );
+
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.label("The Oxen where unhappy with your offering of valve states.");
+                    ui.image(egui::include_image!("../ox.jpg"));
+                    ui.label("Please close all valves.");
+                });
+
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    self.ox_fail_popup = false;
+                }
+            },
+        );
+    }
+
     /// Set the mode and perform setup behaviors.
     fn set_mode(&mut self, mode: StandMode) {
         if self.mode == StandMode::OxygenFilling {
@@ -89,7 +145,7 @@ impl GuiApp {
                     valve_np4: Some(ValveState::Closed),
                     ..
                 } => {
-                    self.ox_fail_popup = true;
+                    self.handle_oxygen_filling_failure();
                     return;
                 }
 
@@ -100,7 +156,6 @@ impl GuiApp {
         match mode {
             StandMode::CheckOut => self.mode = StandMode::CheckOut,
 
-            // TODO: Check beginning state and reject transition if not matching.
             StandMode::OxygenFilling => match self.stand_state {
                 StandState {
                     valve_np1: Some(ValveState::Closed),
@@ -115,7 +170,8 @@ impl GuiApp {
                 } => self.mode = StandMode::OxygenFilling,
 
                 _ => {
-                    self.ox_fail_popup = true;
+                    self.handle_oxygen_filling_failure();
+                    return;
                 }
             },
 
@@ -136,43 +192,10 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Asses stand state:
-        let fields: Vec<SensorField> = self
-            .field_reciever
-            .fields()
-            .map(|(name, &value)| SensorField {
-                name: name.clone(),
-                value,
-            })
-            .collect();
+        self.update_stand_state();
 
-        self.stand_state = StandState::from_fields(&fields);
-
-        // Popup for when ox filling mode transition fails:
         if self.ox_fail_popup {
-            ctx.show_viewport_immediate(
-                egui::ViewportId::from_hash_of("The Oxen Are Unhappy"),
-                egui::ViewportBuilder::default()
-                    .with_title("The Oxen Are Unhappy")
-                    .with_inner_size([400.0, 300.0])
-                    .with_resizable(false),
-                |ctx, class| {
-                    assert!(
-                        class == egui::ViewportClass::Immediate,
-                        "This egui backend doesn't support multiple viewports"
-                    );
-
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        ui.label("The Oxen where unhappy with your offering of valve states.");
-                        ui.image(egui::include_image!("../ox.jpg"));
-                        ui.label("Please close all valves.");
-                    });
-
-                    if ctx.input(|i| i.viewport().close_requested()) {
-                        self.ox_fail_popup = false;
-                    }
-                },
-            );
+            self.show_oxygen_filling_failure_popup(ctx);
         }
 
         // Main view:
