@@ -80,7 +80,25 @@ impl GuiApp {
     }
 
     /// Set the mode and perform setup behaviors.
-    fn set_mode(&mut self, ctx: &egui::Context, mode: StandMode) {
+    fn set_mode(&mut self, mode: StandMode) {
+        match self.mode {
+            // If leaving ox filling mode make sure the valves are closed.
+            StandMode::OxygenFilling => match self.stand_state {
+                StandState {
+                    valve_np3: Some(ValveState::Closed),
+                    valve_np4: Some(ValveState::Closed),
+                    ..
+                } => {
+                    self.ox_fail_popup = true;
+                    return;
+                }
+
+                _ => (),
+            },
+
+            _ => (),
+        };
+
         match mode {
             StandMode::CheckOut => self.mode = StandMode::CheckOut,
 
@@ -203,12 +221,12 @@ impl eframe::App for GuiApp {
                     ui.centered_and_justified(|ui| {
                         ui.menu_button(self.mode.to_string(), |ui| {
                             if ui.button(StandMode::CheckOut.to_string()).clicked() {
-                                self.set_mode(ctx, StandMode::CheckOut);
+                                self.set_mode(StandMode::CheckOut);
                                 ui.close();
                             }
 
                             if ui.button(StandMode::OxygenFilling.to_string()).clicked() {
-                                self.set_mode(ctx, StandMode::OxygenFilling);
+                                self.set_mode(StandMode::OxygenFilling);
                                 ui.close();
                             }
 
@@ -216,12 +234,12 @@ impl eframe::App for GuiApp {
                                 .button(StandMode::PressurizationAndFiring.to_string())
                                 .clicked()
                             {
-                                self.set_mode(ctx, StandMode::PressurizationAndFiring);
+                                self.set_mode(StandMode::PressurizationAndFiring);
                                 ui.close();
                             }
 
                             if ui.button(StandMode::Safing.to_string()).clicked() {
-                                self.set_mode(ctx, StandMode::Safing);
+                                self.set_mode(StandMode::Safing);
                                 ui.close();
                             }
                         })
@@ -326,7 +344,7 @@ impl eframe::App for GuiApp {
                                 )
                                 .clicked()
                             {
-                                self.set_mode(ctx, StandMode::Safing);
+                                self.set_mode(StandMode::Safing);
                             }
                         });
                     });
