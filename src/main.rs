@@ -2,7 +2,10 @@
 #![feature(iterator_try_collect)]
 
 use serialport::SerialPort;
-use std::{io, process::exit};
+use std::{
+    io::{self, Write},
+    process::exit,
+};
 
 mod gui;
 mod sequence;
@@ -45,7 +48,8 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
         println!("\tPort name [{i}]: {} ({})", name, port.port_name)
     }
 
-    println!("Select port number: ");
+    write!(io::stdout(), "Select Port number: ").unwrap();
+    io::stdout().flush().unwrap();
 
     let mut buffer = String::new();
 
