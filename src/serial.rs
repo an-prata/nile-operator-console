@@ -11,8 +11,8 @@ use std::{
 
 use crate::sequence::CommandSequence;
 
-const CHECKED_FIELD_NAMES: [&'static str; 8] = [
-    "Field 1", "Field 2", "Field 3", "NP1_OPEN", "NP2_OPEN", "NP3_OPEN", "NP4_OPEN", "IP1_OPEN",
+const CHECKED_FIELD_NAMES: [&'static str; 7] = [
+    "NP1_OPEN", "NP2_OPEN", "NP3_OPEN", "NP4_OPEN", "IP1_OPEN", "IP2_OPEN", "IP3_OPEN",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
