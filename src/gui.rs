@@ -1,7 +1,5 @@
 use crate::{
-    sequence::{Command, CommandSequence, ValveHandle},
-    serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
-    stand::{StandState, ValveState},
+    diagram::Diagram, sequence::{Command, CommandSequence, ValveHandle}, serial::{self, FieldReader, FieldReciever, SensorField, SensorValue}, stand::{StandState, ValveState}
 };
 use eframe::egui::{self, Color32};
 use std::{
@@ -24,12 +22,8 @@ where
     };
 
     let field_reciever = serial::start_field_thread(field_reader);
-
-    let diagram_image_bytes = include_bytes!("../NILE P&ID.png");
-    let image = image::load_from_memory(diagram_image_bytes.as_slice())
+    let diagram = Diagram::from_bytes(include_bytes!("../NILE P&ID.png"))
         .expect("Diagram should be valid image");
-    let image_buf = image.to_rgba8();
-    let pixels = image_buf.as_flat_samples();
 
     eframe::run_native(
         "NILE Stand",
@@ -40,6 +34,7 @@ where
             Ok(Box::new(GuiApp {
                 mode: StandMode::default(),
                 stand_state: StandState::default(),
+                stand_state_changed: true, // True so that stuff updates frame 1
 
                 ox_fail_popup: false,
 
@@ -51,12 +46,7 @@ where
 
                 field_reciever,
 
-                diagram: egui::ColorImage::from_rgba_unmultiplied(
-                    [image.width() as _, image.height() as _],
-                    pixels.as_slice(),
-                ),
-                diagram_texture: None,
-                should_update_diagram: true
+                diagram
             }))
         }),
     )
@@ -64,9 +54,16 @@ where
 
 /// Type holding the state of the app's GUI.
 pub struct GuiApp {
+    /// Mode of operator console as a whole.
     mode: StandMode,
+
+    /// State of the NILE test stand, as reported over serial.
     stand_state: StandState,
 
+    /// Whether or not the NILE test stand's state has changed in the last state update.
+    stand_state_changed: bool,
+
+    /// Whether or not to show the ox mode transition failure popup window.
     ox_fail_popup: bool,
 
     fire_time_text: String,
@@ -77,9 +74,7 @@ pub struct GuiApp {
 
     field_reciever: FieldReciever,
 
-    diagram: egui::ColorImage,
-    diagram_texture: Option<egui::TextureHandle>,
-    should_update_diagram: bool
+    diagram: Diagram
 }
 
 impl GuiApp {
@@ -116,7 +111,9 @@ impl GuiApp {
             })
             .collect();
 
-        self.stand_state = StandState::from_fields(&fields);
+        let new_state = StandState::from_fields(&fields);
+        self.stand_state_changed = new_state != self.stand_state;
+        self.stand_state = new_state;
     }
 
     /// Logs the failure to switch modes from/to [`StandMode::OxygenFilling`] and sets the failure
@@ -227,14 +224,10 @@ impl eframe::App for GuiApp {
             self.show_oxygen_filling_failure_popup(ctx);
         }
 
-        if self.should_update_diagram {
-            self.diagram_texture = Some(ctx.load_texture(
-                "Diagram",
-                self.diagram.clone(),
-                egui::TextureOptions::default()
-            ));
-
-            self.should_update_diagram = false;
+        if self.stand_state_changed {
+            self.diagram.reset_image();
+            self.diagram.plot_valves(self.stand_state);
+            self.diagram.reload_texture(ctx);
         }
 
         // Main view:
@@ -245,7 +238,7 @@ impl eframe::App for GuiApp {
                     ui.label("Piping & Instrumentation Diagram:");
                 });
 
-                match &self.diagram_texture {
+                match &self.diagram.texture {
                     None => (),
 
                     Some(texture_handle) => {

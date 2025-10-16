@@ -7,6 +7,7 @@ use std::{
     process::exit,
 };
 
+mod diagram;
 mod gui;
 mod sequence;
 mod serial;
