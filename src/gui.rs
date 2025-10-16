@@ -123,7 +123,7 @@ impl GuiApp {
                 );
 
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.label("The Oxen where unhappy with your offering of valve states.");
+                    ui.label("The Oxen were unhappy with your offering of valve states.");
                     ui.image(egui::include_image!("../ox.jpg"));
                     ui.label("Please close all valves.");
                 });
