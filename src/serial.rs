@@ -4,7 +4,6 @@ use std::{
     error::Error,
     fmt::Display,
     io::{self, Read, Write},
-    string::FromUtf8Error,
     sync::mpsc::{self, Receiver, SendError, Sender},
     thread::{self, JoinHandle},
     time::Duration,
