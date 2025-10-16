@@ -9,4 +9,4 @@ eframe = "0.32.3"
 egui_extras = { version = "0.32.2", features = ["default", "image"] }
 log = "0.4.28"
 simplelog = "0.12.2"
-image = { version = "0.25.8", feature = ["jpeg", "png"] }
+image = { version = "0.25.8", features = ["jpeg", "png"] }
