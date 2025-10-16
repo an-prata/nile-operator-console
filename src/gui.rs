@@ -115,7 +115,8 @@ impl GuiApp {
             egui::ViewportBuilder::default()
                 .with_title(title)
                 .with_inner_size([400.0, 300.0])
-                .with_resizable(false),
+                .with_resizable(false)
+                .with_always_on_top(),
             |ctx, class| {
                 assert!(
                     class == egui::ViewportClass::Immediate,
