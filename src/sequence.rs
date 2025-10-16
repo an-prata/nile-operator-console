@@ -63,8 +63,6 @@ pub enum Command {
     OpenValve(ValveHandle),
     CloseValve(ValveHandle),
     Ignite,
-    Safe,
-    Fire,
     Wait(Duration),
     Done,
 }
@@ -85,8 +83,6 @@ impl Command {
             }
 
             Command::Ignite => tx.send("\nIGNITE\n".to_string().into_bytes()),
-            Command::Safe => tx.send("\nSAFE\n".to_string().into_bytes()),
-            Command::Fire => tx.send("\nFIRE\n".to_string().into_bytes()),
 
             Command::Wait(duration) => {
                 thread::sleep(duration);

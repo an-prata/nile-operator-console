@@ -187,14 +187,6 @@ impl FieldReciever {
         self.fields.iter()
     }
 
-    /// Gets a [`SensorValue`] by its associated [`SensorField`]'s name.
-    ///
-    /// [`SensorValue`]: SensorValue
-    /// [`SensorField`]: SensorField
-    pub fn get_field(&self, field_name: &str) -> Option<&SensorValue> {
-        self.fields.get(field_name)
-    }
-
     /// Recieve as many fields as possible over the channel without blocking for new
     /// [`SensorField`]s. This function will populate/update the [`FieldReciever`]'s collection
     /// of [`SensorField`]s.
@@ -308,55 +300,6 @@ where
             remainder: String::new(),
             fields: HashMap::new(),
         }
-    }
-
-    /// Gives an [`Iterator`] of the sensor fields of the [`SensorFieldReader`].
-    ///
-    /// [`Iterator`]: Iterator
-    /// [`SensoryFieldReader`]: SensorFieldReader
-    pub fn fields(&self) -> hash_map::Iter<'_, String, SensorValue> {
-        self.fields.iter()
-    }
-
-    /// Gets a [`SensorValue`] by its associated [`SensorField`]'s name.
-    ///
-    /// [`SensorValue`]: SensorValue
-    /// [`SensorField`]: SensorField
-    pub fn get_field(&self, field_name: &str) -> Option<&SensorValue> {
-        self.fields.get(field_name)
-    }
-
-    /// Read as many [`SensorField`]s as can be parsed and store/update them in the given
-    /// [`SensorFieldReader`].
-    ///
-    /// [`SensorField`]: SensorField
-    /// [`SensorFieldReader`]: SensorFieldReader
-    pub fn update_fields(&mut self) -> Result<(), SensorFieldReadError> {
-        let fields = self.read_fields()?;
-
-        for SensorField { name, value } in fields {
-            self.fields.insert(name, value);
-        }
-
-        Ok(())
-    }
-
-    /// Read as many [`SensorField`]s as can be parsed from the [`SensorFieldReader`].
-    ///
-    /// [`SensorField`]: SensorField
-    /// [`SensorFieldReader`]: SensorFieldReader
-    fn read_fields(&mut self) -> Result<Vec<SensorField>, SensorFieldReadError> {
-        // We want to accept textual data of this format:
-        //
-        // [field name]:[field type abreviation]=[value]\n
-        //
-        // Where '\n' would indicate the end of the field. Spaces would be acceptable, but would be
-        // understood as part of one of the items in square brackets rather than spacing around the
-        // colon of equal sign.
-
-        let (remainder, fields) = read_fields(&mut self.reader, self.remainder.to_owned())?;
-        self.remainder = remainder;
-        Ok(fields)
     }
 }
 
