@@ -18,7 +18,7 @@ where
     let gui_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("NILE Stand")
-            .with_inner_size([480.0, 320.0]),
+            .with_inner_size([720.0, 560.0]),
 
         ..eframe::NativeOptions::default()
     };
@@ -37,8 +37,12 @@ where
 
                 ox_fail_popup: false,
 
-                fire_time_text: "Enter fire time.".to_string(),
+                fire_time_text: "0".to_string(),
                 fire_time: Duration::default(),
+
+                valve_np1_ip1_offset_text: "0".to_string(),
+                valve_np1_ip1_offset: 0.0,
+
                 field_reciever,
             }))
         }),
@@ -55,6 +59,10 @@ pub struct GuiApp {
 
     fire_time_text: String,
     fire_time: Duration,
+
+    valve_np1_ip1_offset_text: String,
+    valve_np1_ip1_offset: f32,
+
     field_reciever: FieldReciever,
 }
 
@@ -309,6 +317,18 @@ impl eframe::App for GuiApp {
                         }
 
                         StandMode::PressurizationAndFiring => {
+                            ui.label("Enter time difference between NP1 and IP1 in firing sequence, positive times indicate that NP1 should open first, negative values indicate that IP1 should open first:");
+
+                            let valve_np1_ip1_offset_text_res =
+                                ui.text_edit_singleline(&mut self.valve_np1_ip1_offset_text);
+
+                            if let Ok(t) = self.valve_np1_ip1_offset_text.parse() {
+                                self.valve_np1_ip1_offset = t;
+                            } else if valve_np1_ip1_offset_text_res.lost_focus() {
+                                self.valve_np1_ip1_offset_text = "0".to_string();
+                            }
+                            
+                            ui.label("\nEnter fire time:");
                             ui.horizontal(|ui| {
                                 let fire_time_text_res =
                                     ui.text_edit_singleline(&mut self.fire_time_text);
@@ -316,7 +336,7 @@ impl eframe::App for GuiApp {
                                 if let Ok(t) = self.fire_time_text.parse() {
                                     self.fire_time = Duration::from_secs_f64(t);
                                 } else if fire_time_text_res.lost_focus() {
-                                    self.fire_time_text = "Enter fire time.".to_string();
+                                    self.fire_time_text = "0".to_string();
                                 }
 
                                 if ui
@@ -338,20 +358,31 @@ impl eframe::App for GuiApp {
                                     // open NP3 IP3 to vent
 
                                     let wait_time = Duration::from_secs(1);
-                                    let seq = CommandSequence::new()
+                                    let seq_start = CommandSequence::new()
                                         .then(Command::Ignite)
-                                        .then(Command::Wait(wait_time))
-                                        .then(Command::OpenValve(ValveHandle::NP1))
-                                        .then(Command::OpenValve(ValveHandle::IP1))
-                                        .then(Command::Wait(self.fire_time))
-                                        .then(Command::Wait(Duration::from_secs(3)))
-                                        .then(Command::CloseValve(ValveHandle::NP1))
-                                        .then(Command::CloseValve(ValveHandle::IP1))
-                                        .then(Command::CloseValve(ValveHandle::NP2))
-                                        .then(Command::CloseValve(ValveHandle::IP2))
-                                        .then(Command::OpenValve(ValveHandle::NP3))
-                                        .then(Command::OpenValve(ValveHandle::IP3))
-                                        .then(Command::Done);
+                                        .then(Command::Wait(wait_time));
+
+                                    let seq = if self.valve_np1_ip1_offset >= 0f32 {
+                                        seq_start
+                                            .then(Command::OpenValve(ValveHandle::NP1))
+                                            .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset)))
+                                            .then(Command::OpenValve(ValveHandle::IP1))
+                                        
+                                    } else {
+                                        seq_start
+                                            .then(Command::OpenValve(ValveHandle::IP1))
+                                            .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset.abs())))
+                                            .then(Command::OpenValve(ValveHandle::NP1))
+                                    }
+                                    .then(Command::Wait(self.fire_time))
+                                    .then(Command::Wait(Duration::from_secs(3)))
+                                    .then(Command::CloseValve(ValveHandle::NP1))
+                                    .then(Command::CloseValve(ValveHandle::IP1))
+                                    .then(Command::CloseValve(ValveHandle::NP2))
+                                    .then(Command::CloseValve(ValveHandle::IP2))
+                                    .then(Command::OpenValve(ValveHandle::NP3))
+                                    .then(Command::OpenValve(ValveHandle::IP3))
+                                    .then(Command::Done);
 
                                     self.field_reciever.run_sequence_par(seq);
                                 }
