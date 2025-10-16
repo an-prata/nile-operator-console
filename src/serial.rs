@@ -87,13 +87,6 @@ pub fn open_field_port(
     Ok(FieldReader::new(port))
 }
 
-/// Create a simulated [`SensorFieldReader`] by using a pre-filled slice of bytes as the input.
-///
-/// [`SensorFieldReader`]: SensorFieldReader
-pub fn field_port_sim(buffer: &[u8]) -> FieldReader<&[u8]> {
-    FieldReader::new(buffer)
-}
-
 /// Opens the USB port described by the given [`UsbSerialPortInfo`] for serial read/write at the
 /// given `baud`.
 ///
@@ -423,19 +416,13 @@ where
 
 #[derive(Debug)]
 pub enum SensorFieldReadError {
-    ParseError(FieldParseError),
     IoError(io::Error),
-    Utf8Error(FromUtf8Error),
 }
 
 impl Display for SensorFieldReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SensorFieldReadError::ParseError(e) => write!(f, "Failed to read fields: {e}"),
             SensorFieldReadError::IoError(e) => write!(f, "Failed to read fields: IO error: {e}"),
-            SensorFieldReadError::Utf8Error(e) => {
-                write!(f, "Failed to read fields: Utf8 error: {e}")
-            }
         }
     }
 }
@@ -514,7 +501,6 @@ pub enum FieldParseError {
     InvalidType(String),
     InvalidValue(String),
     ToManyTokens,
-    BadChars,
 }
 
 impl Display for FieldParseError {
@@ -527,7 +513,6 @@ impl Display for FieldParseError {
             FieldParseError::InvalidType(token) => write!(f, "Invalie field type: {token}"),
             FieldParseError::InvalidValue(token) => write!(f, "Invalid value: '{token}'"),
             FieldParseError::ToManyTokens => write!(f, "To many tokens in field"),
-            FieldParseError::BadChars => write!(f, "Serial data could not be understood as text"),
         }
     }
 }
