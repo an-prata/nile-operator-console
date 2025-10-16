@@ -179,12 +179,16 @@ impl GuiApp {
             StandMode::PressurizationAndFiring => self.mode = StandMode::PressurizationAndFiring,
 
             StandMode::Safing => {
-                self.field_reciever
-                    .send_command(serial::ValveCommand::Open(serial::NILE_VALVE_NP3))
-                    .unwrap();
-                self.field_reciever
-                    .send_command(serial::ValveCommand::Open(serial::NILE_VALVE_IP3))
-                    .unwrap();
+                let seq = CommandSequence::new()
+                    .then(Command::OpenValve(ValveHandle::NP3))
+                    .then(Command::OpenValve(ValveHandle::IP3))
+                    .then(Command::CloseValve(ValveHandle::NP1))
+                    .then(Command::CloseValve(ValveHandle::NP2))
+                    .then(Command::CloseValve(ValveHandle::NP4))
+                    .then(Command::CloseValve(ValveHandle::IP1))
+                    .then(Command::CloseValve(ValveHandle::IP2));
+
+                self.field_reciever.run_sequence(seq).unwrap();
                 self.mode = StandMode::Safing;
             }
         }
