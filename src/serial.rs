@@ -397,20 +397,17 @@ where
 
     // Append the previous iteration's remainder in order to complete the first line.
     let text = format!("{remainder}{read_text}");
-    let mut lines: Vec<&str> = text.lines().collect();
 
     // Remove the last line since it might not be a complete field, which would cause a parse error.
-    let remainder = lines.pop().map(str::to_string).unwrap_or(String::new());
+    let (lines, remainder) = text.rsplit_once('\n').unwrap_or(("", text.as_str()));
     let fields = lines
-        .into_iter()
+        .lines()
         .map(|line| parse_sensor_field(line))
         .filter_map(Result::ok)
         .filter(|field| CHECKED_FIELD_NAMES.contains(&field.name.as_str()))
         .collect();
-    // .try_collect()
-    // .map_err(|e| SensorFieldReadError::ParseError(e))?;
 
-    Ok((remainder, fields))
+    Ok((remainder.to_string(), fields))
 }
 
 #[derive(Debug)]
