@@ -25,6 +25,12 @@ where
 
     let field_reciever = serial::start_field_thread(field_reader);
 
+    let diagram_image_bytes = include_bytes!("../NILE P&ID.png");
+    let image = image::load_from_memory(diagram_image_bytes.as_slice())
+        .expect("Diagram should be valid image");
+    let image_buf = image.to_rgba8();
+    let pixels = image_buf.as_flat_samples();
+
     eframe::run_native(
         "NILE Stand",
         gui_options,
@@ -44,13 +50,19 @@ where
                 valve_np1_ip1_offset: 0.0,
 
                 field_reciever,
+
+                diagram: egui::ColorImage::from_rgba_unmultiplied(
+                    [image.width() as _, image.height() as _],
+                    pixels.as_slice(),
+                ),
+                diagram_texture: None,
+                should_update_diagram: true
             }))
         }),
     )
 }
 
 /// Type holding the state of the app's GUI.
-#[derive(Debug)]
 pub struct GuiApp {
     mode: StandMode,
     stand_state: StandState,
@@ -64,6 +76,10 @@ pub struct GuiApp {
     valve_np1_ip1_offset: f32,
 
     field_reciever: FieldReciever,
+
+    diagram: egui::ColorImage,
+    diagram_texture: Option<egui::TextureHandle>,
+    should_update_diagram: bool
 }
 
 impl GuiApp {
@@ -211,6 +227,16 @@ impl eframe::App for GuiApp {
             self.show_oxygen_filling_failure_popup(ctx);
         }
 
+        if self.should_update_diagram {
+            self.diagram_texture = Some(ctx.load_texture(
+                "Diagram",
+                self.diagram.clone(),
+                egui::TextureOptions::default()
+            ));
+
+            self.should_update_diagram = false;
+        }
+
         // Main view:
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
@@ -219,7 +245,16 @@ impl eframe::App for GuiApp {
                     ui.label("Piping & Instrumentation Diagram:");
                 });
 
-                left.image(egui::include_image!("../NILE P&ID.png"));
+                match &self.diagram_texture {
+                    None => (),
+
+                    Some(texture_handle) => {
+                        left.add(
+                            egui::Image::new(egui::load::SizedTexture::from_handle(texture_handle))
+                                .shrink_to_fit()
+                        );
+                    }
+                }
 
                 egui::TopBottomPanel::bottom("Valve Control Panel").show_inside(left, |ui| {
                     for valve in self.mode.manual_control_valves() {
