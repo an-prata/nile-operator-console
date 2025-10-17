@@ -46,7 +46,7 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
             Some(s) => s,
         };
 
-        println!("\tPort name [{i}]: {} ({})", name, port.port_name)
+        println!("\tPort name [{i}]: {} ({})", name, port.port_name);
     }
 
     write!(io::stdout(), "Select Port number: ").unwrap();
