@@ -56,92 +56,27 @@ impl Diagram {
         self.image = self.base_image.clone();
     }
 
+    /// Mark up the [`Diagram`] with the given [`StandState`].
+    ///
+    /// [`Diagram`]: Diagram
+    /// [`StandState`]: StandState
     pub fn plot_valves(&mut self, stand_state: StandState) {
-        // NP1
-        self.set_region(
-            405,
-            405 + 40,
-            475,
-            475 + 40,
-            match stand_state.valve_np1 {
-                Some(ValveState::Open) => COLOR_OPEN,
-                Some(ValveState::Closed) => COLOR_CLOSED,
-                None => COLOR_UNKNOWN,
-            },
-        );
+        self.set_valve(405, 475, stand_state.valve_np1);
+        self.set_valve(400, 190, stand_state.valve_np2);
+        self.set_valve(365, 240, stand_state.valve_np3);
+        self.set_valve(175, 450, stand_state.valve_np4);
+        self.set_valve(665, 475, stand_state.valve_ip1);
+        self.set_valve(670, 195, stand_state.valve_ip2);
+        self.set_valve(735, 285, stand_state.valve_ip3);
+    }
 
-        // NP2
+    pub fn set_valve(&mut self, x: usize, y: usize, valve: Option<ValveState>) {
         self.set_region(
-            400,
-            400 + 40,
-            190,
-            190 + 40,
-            match stand_state.valve_np2 {
-                Some(ValveState::Open) => COLOR_OPEN,
-                Some(ValveState::Closed) => COLOR_CLOSED,
-                None => COLOR_UNKNOWN,
-            },
-        );
-
-        // NP3
-        self.set_region(
-            365,
-            365 + 40,
-            240,
-            240 + 40,
-            match stand_state.valve_np3 {
-                Some(ValveState::Open) => COLOR_OPEN,
-                Some(ValveState::Closed) => COLOR_CLOSED,
-                None => COLOR_UNKNOWN,
-            },
-        );
-
-        // NP4
-        self.set_region(
-            175,
-            175 + 40,
-            450,
-            450 + 40,
-            match stand_state.valve_np4 {
-                Some(ValveState::Open) => COLOR_OPEN,
-                Some(ValveState::Closed) => COLOR_CLOSED,
-                None => COLOR_UNKNOWN,
-            },
-        );
-
-        // IP1
-        self.set_region(
-            665,
-            665 + 40,
-            475,
-            475 + 40,
-            match stand_state.valve_ip1 {
-                Some(ValveState::Open) => COLOR_OPEN,
-                Some(ValveState::Closed) => COLOR_CLOSED,
-                None => COLOR_UNKNOWN,
-            },
-        );
-
-        // IP2
-        self.set_region(
-            670,
-            670 + 40,
-            195,
-            195 + 40,
-            match stand_state.valve_ip2 {
-                Some(ValveState::Open) => COLOR_OPEN,
-                Some(ValveState::Closed) => COLOR_CLOSED,
-                None => COLOR_UNKNOWN,
-            },
-        );
-
-        // IP3
-        self.set_region(
-            735,
-            735 + 40,
-            285,
-            285 + 40,
-            match stand_state.valve_ip3 {
+            x,
+            x + 40,
+            y,
+            y + 40,
+            match valve {
                 Some(ValveState::Open) => COLOR_OPEN,
                 Some(ValveState::Closed) => COLOR_CLOSED,
                 None => COLOR_UNKNOWN,
