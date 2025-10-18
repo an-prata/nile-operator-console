@@ -49,7 +49,7 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
         println!("\tPort name [{i}]: {} ({})", name, port.port_name);
     }
 
-    write!(io::stdout(), "Select Port number: ").unwrap();
+    write!(io::stdout(), "Select Port number (enter 'r' to refresh): ").unwrap();
     io::stdout().flush().unwrap();
 
     let mut buffer = String::new();
@@ -61,6 +61,10 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
             exit(1);
         }
     };
+
+    if buffer.as_str() == "r\n" {
+        return get_field_reader();
+    }
 
     let port_number: Option<usize> = buffer.trim().parse().ok();
     let selected_port = match port_number.and_then(|n| usb_ports.get(n)) {
@@ -79,5 +83,6 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
         }
     };
 
+    log::info!("Established serial connection!");
     field_reader
 }

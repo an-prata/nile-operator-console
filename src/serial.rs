@@ -4,7 +4,7 @@ use std::{
     error::Error,
     fmt::Display,
     io::{self, Read, Write},
-    sync::mpsc::{self, Receiver, SendError, Sender},
+    sync::mpsc::{self, Receiver, SendError, Sender, TryRecvError},
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -109,14 +109,14 @@ where
 {
     let (field_sender, field_reciever) = field_channel(field_reader);
 
-    thread::spawn(move || {
+    thread::spawn(move || -> Result<(), SensorFieldReadError> {
         let mut field_sender = field_sender;
 
         loop {
-            field_sender.send_fields().expect("Could not read fields");
+            field_sender.send_fields()?;
             field_sender
                 .send_commands()
-                .expect("Could not send commands");
+                .map_err(|e| SensorFieldReadError::IoError(e))?;
         }
     });
 
@@ -191,11 +191,24 @@ impl FieldReciever {
     /// [`SensorField`]s. This function will populate/update the [`FieldReciever`]'s collection
     /// of [`SensorField`]s.
     ///
+    /// This function will never produce [`TryRecvError::Empty`], when this function internally
+    /// encounters [`TryRecvError::Empty`] it returns [`Ok`]. If this function returns an error it
+    /// is a genuine failure.
+    ///
     /// [`SensorField`]: SensorField
     /// [`FieldReviever`]: FieldReviever
-    pub fn recieve_fields(&mut self) {
-        while let Ok(field) = self.read_rx.try_recv() {
-            self.fields.insert(field.name, field.value);
+    /// [`TryRecvError::Empty`]: TryRecvError::Empty
+    /// [`Ok`]: Ok
+    pub fn recieve_fields(&mut self) -> Result<(), TryRecvError> {
+        loop {
+            match self.read_rx.try_recv() {
+                Ok(field) => {
+                    self.fields.insert(field.name, field.value);
+                }
+
+                Err(TryRecvError::Empty) => return Ok(()),
+                Err(e) => return Err(e),
+            }
         }
     }
 
@@ -245,7 +258,7 @@ where
         for field in fields {
             self.read_tx
                 .send(field)
-                .expect("Expected non hung-up reciever");
+                .map_err(|_| SensorFieldReadError::DeadChannel)?
         }
 
         Ok(())
@@ -356,12 +369,14 @@ where
 #[derive(Debug)]
 pub enum SensorFieldReadError {
     IoError(io::Error),
+    DeadChannel,
 }
 
 impl Display for SensorFieldReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SensorFieldReadError::IoError(e) => write!(f, "Failed to read fields: IO error: {e}"),
+            SensorFieldReadError::DeadChannel => write!(f, "Channel died"),
         }
     }
 }

@@ -1,11 +1,12 @@
 use crate::{
-    diagram::Diagram, sequence::{Command, CommandSequence, ValveHandle}, serial::{self, FieldReader, FieldReciever, SensorField, SensorValue}, stand::{StandState, ValveState}
+    diagram::Diagram,
+    sequence::{Command, CommandSequence, ValveHandle},
+    serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
+    stand::{StandState, ValveState}
 };
 use eframe::egui::{self, Color32};
 use std::{
-    fmt::Display,
-    io::{Read, Write},
-    time::Duration,
+    fmt::Display, io::{Read, Write}, sync::mpsc::SendError, time::Duration
 };
 
 /// Starts the graphical part of the app.
@@ -17,6 +18,8 @@ where
         viewport: egui::ViewportBuilder::default()
             .with_title("NILE Stand")
             .with_inner_size([720.0, 560.0]),
+
+        hardware_acceleration: eframe::HardwareAcceleration::Preferred,
 
         ..eframe::NativeOptions::default()
     };
@@ -32,6 +35,8 @@ where
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
             Ok(Box::new(GuiApp {
+                serial_conn_has_died: false,
+                
                 mode: StandMode::default(),
                 stand_state: StandState::default(),
                 stand_state_changed: true, // True so that stuff updates frame 1
@@ -54,6 +59,8 @@ where
 
 /// Type holding the state of the app's GUI.
 pub struct GuiApp {
+    serial_conn_has_died: bool,
+    
     /// Mode of operator console as a whole.
     mode: StandMode,
 
@@ -84,7 +91,10 @@ impl GuiApp {
     /// [`FieldReciever`]: FieldReciever
     /// [`SensorField`]: serial::SensorField
     fn recieve_fields(&mut self) {
-        self.field_reciever.recieve_fields();
+        if let Err(_) = self.field_reciever.recieve_fields() {
+            self.serial_conn_has_died = true;
+            log::error!("Serial connection has died!");
+        }
     }
 
     /// Produces text with one line per sensor field showing each field's name and value.
@@ -209,7 +219,14 @@ impl GuiApp {
                     .then(Command::CloseValve(ValveHandle::IP1))
                     .then(Command::CloseValve(ValveHandle::IP2));
 
-                self.field_reciever.run_sequence(seq).unwrap();
+                match self.field_reciever.run_sequence(seq) {
+                    Ok(()) => (),
+
+                    Err(SendError(_)) => {
+                        self.serial_conn_has_died = true;
+                    }
+                };
+
                 self.mode = StandMode::Safing;
             }
         }
@@ -218,6 +235,16 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.serial_conn_has_died || ctx.input(|i| i.viewport().close_requested()) {
+            // unfortunately this doesn't close stuff on its own, and the thread which hosts the
+            // window must exit, meaning we cant do a nice connection retry thing.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        } else {
+            self.recieve_fields();
+            ctx.request_repaint();
+        }
+
         self.update_stand_state();
 
         if self.ox_fail_popup {
@@ -308,8 +335,6 @@ impl eframe::App for GuiApp {
                     })
                 });
 
-                self.recieve_fields();
-
                 right.vertical(|ui| {
                     egui::ScrollArea::both().show(ui, |ui| {
                         ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
@@ -338,7 +363,9 @@ impl eframe::App for GuiApp {
                                             .then(Command::Wait(Duration::from_secs(1)))
                                             .then(Command::Done);
 
-                                        self.field_reciever.run_sequence_par(seq);
+                                        if !self.serial_conn_has_died {
+                                            self.field_reciever.run_sequence_par(seq);
+                                        }
                                     }
                                 });
                             });
@@ -386,33 +413,35 @@ impl eframe::App for GuiApp {
                                     // open NP3 IP3 to vent
 
                                     let wait_time = Duration::from_secs(1);
-                                    let seq_start = CommandSequence::new()
+                                    let seq = CommandSequence::new()
                                         .then(Command::Ignite)
                                         .then(Command::Wait(wait_time));
 
-                                    let seq = if self.valve_np1_ip1_offset >= 0f32 {
-                                        seq_start
+                                    let seq = match self.valve_np1_ip1_offset >= 0f32 {
+                                        true => seq
                                             .then(Command::OpenValve(ValveHandle::NP1))
                                             .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset)))
-                                            .then(Command::OpenValve(ValveHandle::IP1))
-                                        
-                                    } else {
-                                        seq_start
+                                            .then(Command::OpenValve(ValveHandle::IP1)),
+                                        false => seq
                                             .then(Command::OpenValve(ValveHandle::IP1))
                                             .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset.abs())))
-                                            .then(Command::OpenValve(ValveHandle::NP1))
-                                    }
-                                    .then(Command::Wait(self.fire_time))
-                                    .then(Command::Wait(Duration::from_secs(3)))
-                                    .then(Command::CloseValve(ValveHandle::NP1))
-                                    .then(Command::CloseValve(ValveHandle::IP1))
-                                    .then(Command::CloseValve(ValveHandle::NP2))
-                                    .then(Command::CloseValve(ValveHandle::IP2))
-                                    .then(Command::OpenValve(ValveHandle::NP3))
-                                    .then(Command::OpenValve(ValveHandle::IP3))
-                                    .then(Command::Done);
+                                            .then(Command::OpenValve(ValveHandle::NP1)),
+                                    };
+                                    
+                                    let seq = seq
+                                        .then(Command::Wait(self.fire_time))
+                                        .then(Command::Wait(Duration::from_secs(3)))
+                                        .then(Command::CloseValve(ValveHandle::NP1))
+                                        .then(Command::CloseValve(ValveHandle::IP1))
+                                        .then(Command::CloseValve(ValveHandle::NP2))
+                                        .then(Command::CloseValve(ValveHandle::IP2))
+                                        .then(Command::OpenValve(ValveHandle::NP3))
+                                        .then(Command::OpenValve(ValveHandle::IP3))
+                                        .then(Command::Done);
 
-                                    self.field_reciever.run_sequence_par(seq);
+                                    if !self.serial_conn_has_died {
+                                        self.field_reciever.run_sequence_par(seq);
+                                    }
                                 }
                             });
                         }
@@ -436,8 +465,6 @@ impl eframe::App for GuiApp {
                 });
             });
         });
-
-        ctx.request_repaint();
     }
 }
 
