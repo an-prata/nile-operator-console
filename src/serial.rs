@@ -76,7 +76,7 @@ pub fn available_usb_ports() -> serialport::Result<Vec<UsbSerialPortInfo>> {
 
 /// Open a USB port described by the given [`UsbSerialPortInfo`] for reading [`SensorField`]s from.
 ///
-/// [`UsbSerialPortInfor`]: UsbSerialPortInfor
+/// [`UsbSerialPortInfo`]: UsbSerialPortInfo
 /// [`SensorField`]: SensorField
 pub fn open_field_port(
     port: &UsbSerialPortInfo,
