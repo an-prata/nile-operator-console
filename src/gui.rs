@@ -1,8 +1,5 @@
 use crate::{
-    diagram::Diagram,
-    sequence::{Command, CommandSequence, ValveHandle},
-    serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
-    stand::{StandState, ValveState}
+    diagram::Diagram, field_history::ValueHistory, sequence::{Command, CommandSequence, ValveHandle}, serial::{self, FieldReader, FieldReciever, SensorField, SensorValue}, stand::{StandState, ValveState}
 };
 use eframe::egui::{self, Color32};
 use std::{
@@ -50,6 +47,7 @@ where
                 valve_np1_ip1_offset: 0.0,
 
                 field_reciever,
+                field_histories: Vec::new(),
 
                 diagram
             }))
@@ -80,6 +78,7 @@ pub struct GuiApp {
     valve_np1_ip1_offset: f32,
 
     field_reciever: FieldReciever,
+    field_histories: Vec<ValueHistory<SensorField>>,
 
     diagram: Diagram
 }
@@ -124,6 +123,21 @@ impl GuiApp {
         let new_state = StandState::from_fields(&fields);
         self.stand_state_changed = new_state != self.stand_state;
         self.stand_state = new_state;
+
+        for field in fields {
+            let maybe_find = self.field_histories.iter_mut().find_map(|hist| match hist.top() {
+                Some(top) if top.name == field.name => Some(hist),
+                _ => None,
+            });
+
+            if let Some(history) = maybe_find {
+                history.push(field);
+            } else {
+                let mut hist = ValueHistory::new();
+                hist.push(field);
+                self.field_histories.push(hist);
+            }
+        }
     }
 
     /// Logs the failure to switch modes from/to [`StandMode::OxygenFilling`] and sets the failure
@@ -260,46 +274,6 @@ impl eframe::App for GuiApp {
         // Main view:
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
-                // Left side:
-                egui::TopBottomPanel::top("Data Panel").show_inside(left, |ui| {
-                    ui.label("Piping & Instrumentation Diagram:");
-                });
-
-                match &self.diagram.texture {
-                    None => (),
-
-                    Some(texture_handle) => {
-                        left.add(
-                            egui::Image::new(egui::load::SizedTexture::from_handle(texture_handle))
-                                .shrink_to_fit()
-                        );
-                    }
-                }
-
-                egui::TopBottomPanel::bottom("Valve Control Panel").show_inside(left, |ui| {
-                    for valve in self.mode.manual_control_valves() {
-                        ui.horizontal(|ui| {
-                            ui.columns_const(|[left, right]| {
-                                left.centered_and_justified(|ui| {
-                                    if ui.button(format!("Open {valve}")).clicked() {
-                                        self.field_reciever
-                                            .send_command(serial::ValveCommand::Open(valve))
-                                            .expect("Expected to be able to send command");
-                                    }
-                                });
-
-                                right.centered_and_justified(|ui| {
-                                    if ui.button(format!("Close {valve}")).clicked() {
-                                        self.field_reciever
-                                            .send_command(serial::ValveCommand::Close(valve))
-                                            .expect("Expected to be able to send command");
-                                    }
-                                });
-                            })
-                        });
-                    }
-                });
-
                 // Right side:
                 egui::TopBottomPanel::top("Right Column Top Panel")
                     .show_inside(right, |ui| ui.label("NILE Stand Telemetry:"));
@@ -342,7 +316,67 @@ impl eframe::App for GuiApp {
                     });
                 });
 
-                egui::TopBottomPanel::bottom("Controls Panel").show_inside(right, |ui| {
+                egui_plot::Plot::new("Some Plot").legend(egui_plot::Legend::default()).show(right, |plot_ui| {
+                    for history in self.field_histories.iter_mut() {
+                        let display_durration = Duration::from_secs(60);
+
+                        history.prune(display_durration);
+
+                        if let Some(name) = history.top().map(|t| t.name.as_str()) {
+                            let points: Vec<egui_plot::PlotPoint> =
+                                history.as_point_span(display_durration).into_iter().map(|(dur, t)|
+                                        egui_plot::PlotPoint::new(-dur.as_secs_f64(), t.value.to_num())
+                                ).collect();
+                    
+                            plot_ui.line(
+                                egui_plot::Line::new(
+                                    name,
+                                    egui_plot::PlotPoints::Owned(points)
+                                )
+                            );
+                        }
+                    }
+                });
+
+                // Left side:
+                egui::TopBottomPanel::top("Data Panel").show_inside(left, |ui| {
+                    ui.label("Piping & Instrumentation Diagram:");
+                });
+
+                match &self.diagram.texture {
+                    None => (),
+
+                    Some(texture_handle) => {
+                        left.add(
+                            egui::Image::new(egui::load::SizedTexture::from_handle(texture_handle))
+                                .shrink_to_fit()
+                        );
+                    }
+                }
+
+                egui::TopBottomPanel::bottom("Controls Panel").show_inside(left, |ui| {
+                    for valve in self.mode.manual_control_valves() {
+                        ui.horizontal(|ui| {
+                            ui.columns_const(|[left, right]| {
+                                left.centered_and_justified(|ui| {
+                                    if ui.button(format!("Open {valve}")).clicked() {
+                                        self.field_reciever
+                                            .send_command(serial::ValveCommand::Open(valve))
+                                            .expect("Expected to be able to send command");
+                                    }
+                                });
+
+                                right.centered_and_justified(|ui| {
+                                    if ui.button(format!("Close {valve}")).clicked() {
+                                        self.field_reciever
+                                            .send_command(serial::ValveCommand::Close(valve))
+                                            .expect("Expected to be able to send command");
+                                    }
+                                });
+                            })
+                        });
+                    }
+
                     match self.mode {
                         StandMode::Safing => {
                             ui.horizontal_wrapped(|ui| {

@@ -11,8 +11,17 @@ use std::{
 
 use crate::sequence::CommandSequence;
 
-const CHECKED_FIELD_NAMES: [&'static str; 7] = [
-    "NP1_OPEN", "NP2_OPEN", "NP3_OPEN", "NP4_OPEN", "IP1_OPEN", "IP2_OPEN", "IP3_OPEN",
+const CHECKED_FIELD_NAMES: [&'static str; 10] = [
+    "NP1_OPEN",
+    "NP2_OPEN",
+    "NP3_OPEN",
+    "NP4_OPEN",
+    "IP1_OPEN",
+    "IP2_OPEN",
+    "IP3_OPEN",
+    "Ox Tank PT",
+    "Fuel Tank PT",
+    "Ox Runline PT",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
@@ -360,7 +369,15 @@ where
         .lines()
         .map(|line| parse_sensor_field(line))
         .filter_map(Result::ok)
-        .filter(|field| CHECKED_FIELD_NAMES.contains(&field.name.as_str()))
+        .filter_map(
+            |field| match CHECKED_FIELD_NAMES.contains(&field.name.as_str()) {
+                true => Some(field),
+                false => {
+                    log::warn!("Discarded field!");
+                    None
+                }
+            },
+        )
         .collect();
 
     Ok((remainder.to_string(), fields))
@@ -439,6 +456,18 @@ impl Display for SensorValue {
             SensorValue::SignedInt(v) => v.fmt(f),
             SensorValue::Float(v) => v.fmt(f),
             SensorValue::Boolean(v) => v.fmt(f),
+        }
+    }
+}
+
+impl SensorValue {
+    pub fn to_num(self) -> f64 {
+        match self {
+            SensorValue::UnsignedInt(u) => u as _,
+            SensorValue::SignedInt(i) => i as _,
+            SensorValue::Float(f) => f,
+            SensorValue::Boolean(true) => 1f64,
+            SensorValue::Boolean(false) => 0f64,
         }
     }
 }

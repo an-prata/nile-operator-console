@@ -8,6 +8,7 @@ use std::{
 };
 
 mod diagram;
+mod field_history;
 mod gui;
 mod sequence;
 mod serial;

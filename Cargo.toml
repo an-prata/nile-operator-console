@@ -5,8 +5,9 @@ edition = "2024"
 
 [dependencies]
 serialport = "4.7.3"
-eframe = "0.32.3"
-egui_extras = { version = "0.32.2", features = ["default", "image"] }
+eframe = "0.33.0"
+egui_extras = { version = "0.33.0", features = ["default", "image"] }
 log = "0.4.28"
 simplelog = "0.12.2"
 image = { version = "0.25.8", features = ["jpeg", "png"] }
+egui_plot = "0.34.0"
