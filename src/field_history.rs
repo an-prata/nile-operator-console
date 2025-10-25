@@ -29,10 +29,6 @@ where
     ///
     /// [`FieldHistory`]: FieldHistory
     pub fn push(&mut self, value: T) {
-        if Some(&value) == self.top() {
-            return;
-        }
-
         self.history.push(HistoricalValue::from_now(value));
     }
 
