@@ -11,7 +11,7 @@ use std::{
 
 use crate::sequence::CommandSequence;
 
-const CHECKED_FIELD_NAMES: [&'static str; 10] = [
+const CHECKED_FIELD_NAMES: [&'static str; 12] = [
     "NP1_OPEN",
     "NP2_OPEN",
     "NP3_OPEN",
@@ -19,9 +19,11 @@ const CHECKED_FIELD_NAMES: [&'static str; 10] = [
     "IP1_OPEN",
     "IP2_OPEN",
     "IP3_OPEN",
+    "Load Cell 1",
     "Ox Tank PT",
     "Fuel Tank PT",
     "Ox Runline PT",
+    "Num Bytes Read",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
@@ -101,6 +103,7 @@ pub fn open_field_port(
 /// [`UsbSerialPortInfo`]: UsbSerialPortInfo
 pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<dyn SerialPort>> {
     serialport::new(port.port_name.as_str(), baud)
+        .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_secs(1))
         .open()
 }
@@ -122,10 +125,16 @@ where
         let mut field_sender = field_sender;
 
         loop {
-            field_sender.send_fields()?;
-            field_sender
+            if let Err(e) = field_sender.send_fields() {
+                log::error!("Field sender had error: {e}");
+            }
+
+            if let Err(e) = field_sender
                 .send_commands()
-                .map_err(|e| SensorFieldReadError::IoError(e))?;
+                .map_err(|e| SensorFieldReadError::IoError(e))
+            {
+                log::error!("Field sender had error: {e}");
+            }
         }
     });
 
@@ -278,19 +287,18 @@ where
     /// [`ValveCommand`]: ValveCommand
     /// [`FieldReciever`]: FieldReciever
     pub fn send_commands(&mut self) -> Result<(), io::Error> {
-        let mut commands: Vec<u8> = vec!['\n' as u8];
-
         while let Ok(mut cmd) = self.command_rx.try_recv() {
             log::info!(
                 "Sending command: {}",
                 String::from_utf8(cmd.clone()).unwrap().trim()
             );
 
-            commands.append(&mut cmd);
-            commands.push('\n' as u8)
+            cmd.push('\n' as _);
+            self.reader.write_all(&cmd)?;
         }
 
-        self.reader.write_all(&commands)
+        self.reader.flush()?;
+        Ok(())
     }
 }
 
