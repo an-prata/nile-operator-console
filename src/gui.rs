@@ -3,8 +3,10 @@ use crate::{
 };
 use eframe::egui::{self, Color32};
 use std::{
-    fmt::Display, io::{Read, Write}, sync::mpsc::SendError, time::Duration
+    fmt::Display, fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
 };
+
+const RECORD_FIELD: &'static str = "Load Cell";
 
 /// Starts the graphical part of the app.
 pub fn start_gui<R>(field_reader: FieldReader<R>) -> eframe::Result
@@ -49,7 +51,10 @@ where
                 field_reciever,
                 field_histories: Vec::new(),
 
-                diagram
+                diagram,
+
+                record_file_path: "Enter Path".to_string(),
+                record_file: None
             }))
         }),
     )
@@ -80,7 +85,10 @@ pub struct GuiApp {
     field_reciever: FieldReciever,
     field_histories: Vec<ValueHistory<SensorField>>,
 
-    diagram: Diagram
+    diagram: Diagram,
+
+    record_file_path: String,
+    record_file: Option<fs::File>
 }
 
 impl GuiApp {
@@ -316,7 +324,43 @@ impl eframe::App for GuiApp {
                     });
                 });
 
-                egui_plot::Plot::new("Some Plot").legend(egui_plot::Legend::default()).show(right, |plot_ui| {
+                right.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut self.record_file_path);
+
+                    match &mut self.record_file {
+                        Some(file) => {
+                            match self.field_reciever.fields().find(|field| field.0.as_str() == RECORD_FIELD) {
+                                Some(field) => {
+                                    let value = match field.1 {
+                                        SensorValue::UnsignedInt(v) => format!("{}\n", v),
+                                        SensorValue::SignedInt(v) => format!("{}\n", v),
+                                        SensorValue::Float(v) => format!("{}\n", v),
+                                        SensorValue::Boolean(v) => format!("{}\n", v),
+                                    };
+
+                                    if let Err(e) = file.write_all(value.as_bytes()) {
+                                        log::error!("Failed to write to record file: {e} ...");
+                                    }
+                                }
+
+                                 None => {
+                                     log::warn!("No value to record!");
+                                 }
+                            }
+                        }
+
+                        None => {
+                            if ui.button(format!("Start Recording '{RECORD_FIELD}'")).clicked() {
+                                if let Ok(f) = fs::File::open(self.record_file_path.as_str()) {
+                                    self.record_file = Some(f);
+                                } else {
+                                    log::error!("Failed to open record file at {}! Not Recording!", self.record_file_path);
+                                }
+                            }
+                        }
+                    }
+                });
+
                 egui_plot::Plot::new("Fields Plot").legend(egui_plot::Legend::default()).show(right, |plot_ui| {
                     for history in self.field_histories.iter_mut() {
                         let display_durration = Duration::from_secs(60);
