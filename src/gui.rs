@@ -317,6 +317,7 @@ impl eframe::App for GuiApp {
                 });
 
                 egui_plot::Plot::new("Some Plot").legend(egui_plot::Legend::default()).show(right, |plot_ui| {
+                egui_plot::Plot::new("Fields Plot").legend(egui_plot::Legend::default()).show(right, |plot_ui| {
                     for history in self.field_histories.iter_mut() {
                         let display_durration = Duration::from_secs(60);
 
