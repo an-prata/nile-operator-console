@@ -6,8 +6,6 @@ use std::{
     fmt::Display, fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
 };
 
-const RECORD_FIELD: &'static str = "Load Cell";
-
 /// Starts the graphical part of the app.
 pub fn start_gui<R>(field_reader: FieldReader<R>) -> eframe::Result
 where
@@ -53,6 +51,7 @@ where
 
                 diagram,
 
+                record_field: "Field to Record".to_string(),
                 record_file_path: "Enter Path".to_string(),
                 record_file: None
             }))
@@ -87,6 +86,7 @@ pub struct GuiApp {
 
     diagram: Diagram,
 
+    record_field: String,
     record_file_path: String,
     record_file: Option<fs::File>
 }
@@ -324,12 +324,16 @@ impl eframe::App for GuiApp {
                     });
                 });
 
-                right.horizontal(|ui| {
+                right.vertical(|ui| {
+                    ui.label("Record this field:");
+                    ui.text_edit_singleline(&mut self.record_field);
+                    
+                    ui.label("To this file:");
                     ui.text_edit_singleline(&mut self.record_file_path);
 
                     match &mut self.record_file {
                         Some(file) => {
-                            match self.field_reciever.fields().find(|field| field.0.as_str() == RECORD_FIELD) {
+                            match self.field_reciever.fields().find(|field| field.0.as_str() == self.record_field.as_str()) {
                                 Some(field) => {
                                     let value = match field.1 {
                                         SensorValue::UnsignedInt(v) => format!("{}\n", v),
@@ -350,7 +354,7 @@ impl eframe::App for GuiApp {
                         }
 
                         None => {
-                            if ui.button(format!("Start Recording '{RECORD_FIELD}'")).clicked() {
+                            if ui.button(format!("Start Recording '{}'", self.record_field)).clicked() {
                                 if let Ok(f) = fs::File::open(self.record_file_path.as_str()) {
                                     self.record_file = Some(f);
                                 } else {
