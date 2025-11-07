@@ -331,7 +331,7 @@ impl eframe::App for GuiApp {
                     ui.label("To this file:");
                     ui.text_edit_singleline(&mut self.record_file_path);
 
-                    match &mut self.record_file {
+                    let should_close = match &mut self.record_file {
                         Some(file) => {
                             match self.field_reciever.fields().find(|field| field.0.as_str() == self.record_field.as_str()) {
                                 Some(field) => {
@@ -351,17 +351,28 @@ impl eframe::App for GuiApp {
                                      log::warn!("No value to record!");
                                  }
                             }
+
+                            if ui.button(format!("Stop Recording '{}'", self.record_field)).clicked() {
+                                let _ = file.flush();
+                                true
+                            } else { false }
                         }
 
                         None => {
                             if ui.button(format!("Start Recording '{}'", self.record_field)).clicked() {
-                                if let Ok(f) = fs::File::open(self.record_file_path.as_str()) {
+                                if let Ok(f) = fs::File::create(self.record_file_path.as_str()) {
                                     self.record_file = Some(f);
                                 } else {
                                     log::error!("Failed to open record file at {}! Not Recording!", self.record_file_path);
                                 }
                             }
+
+                            false
                         }
+                    };
+
+                    if should_close {
+                        self.record_file = None;
                     }
                 });
 
