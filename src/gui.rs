@@ -198,12 +198,11 @@ impl GuiApp {
                     valve_np3: Some(ValveState::Closed),
                     valve_np4: Some(ValveState::Closed),
                     ..
-                } => {
+                } => (),
+                _ =>  {
                     self.handle_oxygen_filling_failure();
                     return;
                 }
-
-                _ => (),
             }
         }
 
