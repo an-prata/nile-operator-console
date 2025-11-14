@@ -11,7 +11,7 @@ use std::{
 
 use crate::sequence::CommandSequence;
 
-const CHECKED_FIELD_NAMES: [&'static str; 15] = [
+const CHECKED_FIELD_NAMES: [&'static str; 16] = [
     "NP1_OPEN",
     "NP2_OPEN",
     "NP3_OPEN",
@@ -21,8 +21,9 @@ const CHECKED_FIELD_NAMES: [&'static str; 15] = [
     "IP3_OPEN",
     "Scale 0",
     "Scale 0 Rate",
-    "Measurement 1",
-    "Measurement 2",
+    "Scale 1",
+    "Scale 1 Rate",
+    "Scale Rates Ratio",
     "PT0",
     "PT1",
     "PT2",
