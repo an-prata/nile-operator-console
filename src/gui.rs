@@ -252,6 +252,35 @@ impl GuiApp {
             }
         }
     }
+    /// Creates a plot graph
+    fn make_plot(&mut self, ui: &mut egui::Ui, id : String, height : Option<f32>, width : f32) {
+        let mut plot = egui_plot::Plot::new(id).legend(egui_plot::Legend::default()).width(width);
+        if height.is_some()
+        {
+            plot = plot.height(height.unwrap());
+        }
+        plot.show(ui, |plot_ui| {
+            for history in self.field_histories.iter_mut() {
+                let display_durration = Duration::from_secs(60);
+
+                history.prune(display_durration);
+
+                if let Some(name) = history.top().map(|t| t.name.as_str()) {
+                    let points: Vec<egui_plot::PlotPoint> =
+                        history.as_point_span(display_durration).into_iter().map(|(dur, t)|
+                            egui_plot::PlotPoint::new(-dur.as_secs_f64(), t.value.to_num())
+                        ).collect();
+
+                    plot_ui.line(
+                        egui_plot::Line::new(
+                            name,
+                            egui_plot::PlotPoints::Owned(points)
+                        )
+                    );
+                }
+            }
+        });
+    }
 }
 
 impl eframe::App for GuiApp {
@@ -374,28 +403,14 @@ impl eframe::App for GuiApp {
                         self.record_file = None;
                     }
                 });
-
-                egui_plot::Plot::new("Fields Plot").legend(egui_plot::Legend::default()).show(right, |plot_ui| {
-                    for history in self.field_histories.iter_mut() {
-                        let display_durration = Duration::from_secs(60);
-
-                        history.prune(display_durration);
-
-                        if let Some(name) = history.top().map(|t| t.name.as_str()) {
-                            let points: Vec<egui_plot::PlotPoint> =
-                                history.as_point_span(display_durration).into_iter().map(|(dur, t)|
-                                        egui_plot::PlotPoint::new(-dur.as_secs_f64(), t.value.to_num())
-                                ).collect();
-                    
-                            plot_ui.line(
-                                egui_plot::Line::new(
-                                    name,
-                                    egui_plot::PlotPoints::Owned(points)
-                                )
-                            );
-                        }
-                    }
+                right.vertical(|ui| {
+                        self.make_plot(ui, "upper".to_string(), Some(ui.available_height() / 2.1),ui.available_width());
+                        ui.columns_const(|[left, right]| {
+                            self.make_plot(left, "left".to_string(), None, left.available_width());
+                            self.make_plot(right, "right".to_string(),None, right.available_width());
+                        });
                 });
+
 
                 // Left side:
                 egui::TopBottomPanel::top("Data Panel").show_inside(left, |ui| {
