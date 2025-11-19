@@ -1,5 +1,9 @@
 use crate::{
-    diagram::Diagram, field_history::ValueHistory, sequence::{Command, CommandSequence, ValveHandle}, serial::{self, FieldReader, FieldReciever, SensorField, SensorValue}, stand::{StandState, ValveState}
+    diagram::Diagram,
+    field_history::ValueHistory,
+    sequence::{Command, CommandSequence, ValveHandle},
+    serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
+    stand::{StandState, ValveState}
 };
 use eframe::egui::{self, Color32};
 use std::{
@@ -457,6 +461,9 @@ impl eframe::App for GuiApp {
                                 ui.centered_and_justified(|ui| {
                                     if ui.button("Depressurize System").clicked() {
                                         let seq = CommandSequence::new()
+                                            .then(Command::OpenValve(ValveHandle::NP3))
+                                            .then(Command::OpenValve(ValveHandle::IP3))
+                                            .then(Command::Wait(Duration::from_secs(1)))
                                             .then(Command::OpenValve(ValveHandle::NP4))
                                             .then(Command::Wait(Duration::from_secs(5)))
                                             .then(Command::CloseValve(ValveHandle::NP4))
@@ -539,12 +546,13 @@ impl eframe::App for GuiApp {
                                     let seq = seq
                                         .then(Command::Wait(self.fire_time))
                                         .then(Command::Wait(Duration::from_secs(3)))
-                                        .then(Command::CloseValve(ValveHandle::NP1))
-                                        .then(Command::CloseValve(ValveHandle::IP1))
                                         .then(Command::CloseValve(ValveHandle::NP2))
                                         .then(Command::CloseValve(ValveHandle::IP2))
                                         .then(Command::OpenValve(ValveHandle::NP3))
                                         .then(Command::OpenValve(ValveHandle::IP3))
+                                        .then(Command::Wait(Duration::from_secs(2)))
+                                        .then(Command::CloseValve(ValveHandle::NP1))
+                                        .then(Command::CloseValve(ValveHandle::IP1))
                                         .then(Command::Done);
 
                                     if !self.serial_conn_has_died {
@@ -557,6 +565,7 @@ impl eframe::App for GuiApp {
                         _ => (),
                     };
 
+                    ui.add_space(16.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.centered_and_justified(|ui| {
                             if ui
