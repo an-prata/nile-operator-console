@@ -5,7 +5,7 @@ use crate::{
     serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
     stand::{StandState, ValveState}
 };
-use eframe::egui::{self, Color32};
+use eframe::egui::{self, Color32, PointerButton};
 use std::{
     fmt::Display, fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
 };
@@ -437,7 +437,12 @@ impl eframe::App for GuiApp {
                         ui.horizontal(|ui| {
                             ui.columns_const(|[left, right]| {
                                 left.centered_and_justified(|ui| {
-                                    if ui.button(format!("Open {valve}")).clicked() {
+                                    let res = ui.add(
+                                        egui::Button::new(format!("Open {valve}"))
+                                            .min_size(egui::Vec2 { x: 32.0, y: 32.0 })
+                                    );
+
+                                    if res.clicked() {
                                         self.field_reciever
                                             .send_command(serial::ValveCommand::Open(valve))
                                             .expect("Expected to be able to send command");
@@ -445,7 +450,12 @@ impl eframe::App for GuiApp {
                                 });
 
                                 right.centered_and_justified(|ui| {
-                                    if ui.button(format!("Close {valve}")).clicked() {
+                                    let res = ui.add(
+                                        egui::Button::new(format!("Close {valve}"))
+                                            .min_size(egui::Vec2 { x: 32.0, y: 32.0 })
+                                    );
+
+                                    if res.clicked() {
                                         self.field_reciever
                                             .send_command(serial::ValveCommand::Close(valve))
                                             .expect("Expected to be able to send command");
