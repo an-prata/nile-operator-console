@@ -5,7 +5,7 @@ use crate::{
     serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
     stand::{StandState, ValveState}
 };
-use eframe::egui::{self, Color32, PointerButton};
+use eframe::egui::{self, Color32};
 use std::{
     fmt::Display, fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
 };
