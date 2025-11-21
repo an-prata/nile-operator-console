@@ -3,11 +3,11 @@ use crate::{
     field_history::ValueHistory,
     sequence::{Command, CommandSequence, ValveHandle},
     serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
-    stand::{StandState, ValveState}
+    stand::{self, StandMode, StandState}
 };
 use eframe::egui::{self, Color32};
 use std::{
-    fmt::Display, fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
+    fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
 };
 
 /// Starts the graphical part of the app.
@@ -38,7 +38,7 @@ where
             Ok(Box::new(GuiApp {
                 serial_conn_has_died: false,
                 
-                mode: StandMode::default(),
+                mode: stand::StandMode::default(),
                 stand_state: StandState::default(),
                 stand_state_changed: true, // True so that stuff updates frame 1
 
@@ -68,7 +68,7 @@ pub struct GuiApp {
     serial_conn_has_died: bool,
     
     /// Mode of operator console as a whole.
-    mode: StandMode,
+    mode: stand::StandMode,
 
     /// State of the NILE test stand, as reported over serial.
     stand_state: StandState,
@@ -132,9 +132,9 @@ impl GuiApp {
             })
             .collect();
 
-        let new_state = StandState::from_fields(&fields);
-        self.stand_state_changed = new_state != self.stand_state;
-        self.stand_state = new_state;
+        let old_state = self.stand_state.clone();
+        self.stand_state.update(&fields);
+        self.stand_state_changed = old_state != self.stand_state;
 
         for field in fields {
             let maybe_find = self.field_histories.iter_mut().find_map(|hist| match hist.top() {
@@ -195,67 +195,34 @@ impl GuiApp {
 
     /// Set the mode and perform setup behaviors.
     fn set_mode(&mut self, mode: StandMode) {
-        if self.mode == StandMode::OxygenFilling {
-            // Check that valves are closed when leaving ox filling mode
-            match self.stand_state {
-                StandState {
-                    valve_np3: Some(ValveState::Closed),
-                    valve_np4: Some(ValveState::Closed),
-                    ..
-                } => (),
-                _ =>  {
-                    self.handle_oxygen_filling_failure();
-                    return;
+        if mode == StandMode::Safing {
+            let seq = CommandSequence::new()
+                .then(Command::OpenValve(ValveHandle::NP3))
+                .then(Command::OpenValve(ValveHandle::IP3))
+                .then(Command::CloseValve(ValveHandle::NP1))
+                .then(Command::CloseValve(ValveHandle::NP2))
+                .then(Command::CloseValve(ValveHandle::NP4))
+                .then(Command::CloseValve(ValveHandle::IP1))
+                .then(Command::CloseValve(ValveHandle::IP2));
+
+            match self.field_reciever.run_sequence(seq) {
+                Ok(()) => (),
+
+                Err(SendError(_)) => {
+                    self.serial_conn_has_died = true;
                 }
-            }
+            };
         }
-
-        match mode {
-            StandMode::CheckOut => self.mode = StandMode::CheckOut,
-
-            StandMode::OxygenFilling => match self.stand_state {
-                StandState {
-                    valve_np1: Some(ValveState::Closed),
-                    valve_np2: Some(ValveState::Closed),
-                    valve_np3: Some(ValveState::Closed),
-                    valve_np4: Some(ValveState::Closed),
-
-                    valve_ip1: Some(ValveState::Closed),
-                    valve_ip2: Some(ValveState::Closed),
-                    valve_ip3: Some(ValveState::Closed),
-                    ..
-                } => self.mode = StandMode::OxygenFilling,
-
-                _ => {
-                    self.handle_oxygen_filling_failure();
-                    return;
-                }
-            },
-
-            StandMode::PressurizationAndFiring => self.mode = StandMode::PressurizationAndFiring,
-
-            StandMode::Safing => {
-                let seq = CommandSequence::new()
-                    .then(Command::OpenValve(ValveHandle::NP3))
-                    .then(Command::OpenValve(ValveHandle::IP3))
-                    .then(Command::CloseValve(ValveHandle::NP1))
-                    .then(Command::CloseValve(ValveHandle::NP2))
-                    .then(Command::CloseValve(ValveHandle::NP4))
-                    .then(Command::CloseValve(ValveHandle::IP1))
-                    .then(Command::CloseValve(ValveHandle::IP2));
-
-                match self.field_reciever.run_sequence(seq) {
-                    Ok(()) => (),
-
-                    Err(SendError(_)) => {
-                        self.serial_conn_has_died = true;
-                    }
-                };
-
-                self.mode = StandMode::Safing;
+    
+        if let Err(e) = self.stand_state.transition_mode(mode) {
+            if self.stand_state.mode() == StandMode::OxygenFilling || mode == StandMode::OxygenFilling {
+                self.handle_oxygen_filling_failure();
             }
-        }
+            
+            log::error!("Mode transition failed: {e}");
+        }        
     }
+
     /// Creates a plot graph
     fn make_plot(&mut self, ui: &mut egui::Ui, id : String, height : Option<f32>, width : f32) {
         let mut plot = egui_plot::Plot::new(id).legend(egui_plot::Legend::default()).width(width);
@@ -595,108 +562,3 @@ impl eframe::App for GuiApp {
     }
 }
 
-/// The different modes that the NILE stand software can take on.
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
-enum StandMode {
-    /// Complete manual control of valves.
-    CheckOut,
-
-    /// Limits control to control of valves [`serial::NILE_VALVE_NP3`] and
-    /// [`serial::NILE_VALVE_NP4`].
-    ///
-    /// [`serial::NILE_VALVE_NP3`]: serial::NILE_VALVE_NP3
-    /// [`serial::NILE_VALVE_NP4`]: serial::NILE_VALVE_NP4
-    OxygenFilling,
-
-    /// Manual control over valves [`serial::NILE_VALVE_NP2`], [`serial::NILE_VALVE_IP2`],
-    /// [`serial::NILE_VALVE_NP3`], and [`serial::NILE_VALVE_IP3`]. Ability to begin sequence which
-    /// ingnites the ignitor, then opens [`serial::NILE_VALVE_NP1`] and [`serial::NILE_VALVE_IP1`]
-    /// simultaniously. Operators can enter a firing time which holds [`serial::NILE_VALVE_NP1`] and
-    /// [`serial::NILE_VALVE_IP1`] open for that time plus three seconds to clear excess propellant.
-    /// After this time plus three seconds [`serial::NILE_VALVE_NP1`], [`serial::NILE_VALVE_IP1`],
-    /// [`serial::NILE_VALVE_NP2`], and [`serial::NILE_VALVE_IP2`] will all close while
-    /// [`serial::NILE_VALVE_NP3`] and [`serial::NILE_VALVE_IP3`] open to vent excess nitrogen
-    /// - "Fire".
-    ///
-    /// NOTE: Maybe have entry for timing delays between NP1 and IP1, though this is probably best
-    /// done on the stand side.
-    ///
-    /// [`serial::NILE_VALVE_NP1`]: serial::NILE_VALVE_NP1
-    /// [`serial::NILE_VALVE_IP1`]: serial::NILE_VALVE_IP1
-    /// [`serial::NILE_VALVE_NP2`]: serial::NILE_VALVE_NP2
-    /// [`serial::NILE_VALVE_IP2`]: serial::NILE_VALVE_IP2
-    /// [`serial::NILE_VALVE_NP3`]: serial::NILE_VALVE_NP3
-    /// [`serial::NILE_VALVE_IP3`]: serial::NILE_VALVE_IP3
-    PressurizationAndFiring,
-
-    /// Sets [`serial::NILE_VALVE_NP3`] and [`serial::NILE_VALVE_IP3`] open and closes all others.
-    /// Also allows for operators to use a "Depress System" button which will open
-    /// [`serial::NILE_VALVE_NP4`] for five seconds then closes it, followed by opening
-    /// [`serial::NILE_VALVE_IP2`] for five seconds then closing it, followed by finally opening
-    /// [`serial::NILE_VALVE_NP2`] for five seconds and then closing it, there should be one second
-    /// delay between all valve openings - "Depressurize System".
-    ///
-    /// [`serial::NILE_VALVE_NP2`]: serial::NILE_VALVE_NP2
-    /// [`serial::NILE_VALVE_IP2`]: serial::NILE_VALVE_IP2
-    /// [`serial::NILE_VALVE_NP3`]: serial::NILE_VALVE_NP3
-    /// [`serial::NILE_VALVE_IP3`]: serial::NILE_VALVE_IP3
-    /// [`serial::NILE_VALVE_NP4`]: serial::NILE_VALVE_NP4
-    #[default]
-    Safing,
-}
-
-impl StandMode {
-    /// Convert the given [`StandMode`] into a [`String`].
-    ///
-    /// [`StandMode`]: StandMode
-    /// [`String`]: String
-    fn to_string(self) -> String {
-        Into::<String>::into(self)
-    }
-
-    /// Returns a [`Vec`] of the valves which may be manually controlled in the given [`StandMode`].
-    ///
-    /// [`Vec`]: Vec
-    /// [`StandMode`]: StandMode
-    fn manual_control_valves(self) -> Vec<&'static str> {
-        match self {
-            Self::CheckOut => vec![
-                serial::NILE_VALVE_NP1,
-                serial::NILE_VALVE_NP2,
-                serial::NILE_VALVE_NP3,
-                serial::NILE_VALVE_NP4,
-                serial::NILE_VALVE_IP1,
-                serial::NILE_VALVE_IP2,
-                serial::NILE_VALVE_IP3,
-            ],
-
-            Self::OxygenFilling => vec![serial::NILE_VALVE_NP3, serial::NILE_VALVE_NP4],
-
-            Self::PressurizationAndFiring => vec![
-                serial::NILE_VALVE_NP2,
-                serial::NILE_VALVE_NP3,
-                serial::NILE_VALVE_IP2,
-                serial::NILE_VALVE_IP3,
-            ],
-
-            Self::Safing => vec![],
-        }
-    }
-}
-
-impl Display for StandMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StandMode::CheckOut => write!(f, "Check Out Mode"),
-            StandMode::OxygenFilling => write!(f, "Ox Filling Mode"),
-            StandMode::PressurizationAndFiring => write!(f, "Pressurization & Firing Mode"),
-            StandMode::Safing => write!(f, "Safing Mode"),
-        }
-    }
-}
-
-impl Into<String> for StandMode {
-    fn into(self) -> String {
-        format!("{}", self)
-    }
-}
