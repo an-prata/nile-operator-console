@@ -3,7 +3,7 @@ use crate::{
     field_history::ValueHistory,
     sequence::{Command, CommandSequence, ValveHandle},
     serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
-    stand::{self, StandMode, StandState}
+    stand::{StandMode, StandState}
 };
 use eframe::egui::{self, Color32};
 use std::{
@@ -38,7 +38,6 @@ where
             Ok(Box::new(GuiApp {
                 serial_conn_has_died: false,
                 
-                mode: stand::StandMode::default(),
                 stand_state: StandState::default(),
                 stand_state_changed: true, // True so that stuff updates frame 1
 
@@ -67,9 +66,6 @@ where
 pub struct GuiApp {
     serial_conn_has_died: bool,
     
-    /// Mode of operator console as a whole.
-    mode: stand::StandMode,
-
     /// State of the NILE test stand, as reported over serial.
     stand_state: StandState,
 
@@ -293,7 +289,7 @@ impl eframe::App for GuiApp {
                     ui.label("Stand Mode: ");
 
                     ui.centered_and_justified(|ui| {
-                        ui.menu_button(self.mode.to_string(), |ui| {
+                        ui.menu_button(self.stand_state.mode().to_string(), |ui| {
                             if ui.button(StandMode::CheckOut.to_string()).clicked() {
                                 self.set_mode(StandMode::CheckOut);
                                 ui.close();
@@ -404,7 +400,7 @@ impl eframe::App for GuiApp {
                 }
 
                 egui::TopBottomPanel::bottom("Controls Panel").show_inside(left, |ui| {
-                    for valve in self.mode.manual_control_valves() {
+                    for valve in self.stand_state.mode().manual_control_valves() {
                         ui.horizontal(|ui| {
                             ui.columns_const(|[left, right]| {
                                 left.centered_and_justified(|ui| {
@@ -436,7 +432,7 @@ impl eframe::App for GuiApp {
                         });
                     }
 
-                    match self.mode {
+                    match self.stand_state.mode() {
                         StandMode::Safing => {
                             ui.horizontal_wrapped(|ui| {
                                 ui.centered_and_justified(|ui| {
