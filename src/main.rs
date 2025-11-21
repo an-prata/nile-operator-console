@@ -10,6 +10,7 @@ use std::{
 mod diagram;
 mod field_history;
 mod gui;
+mod record;
 mod sequence;
 mod serial;
 mod stand;
