@@ -16,25 +16,21 @@ pub struct StandRecord {
 }
 
 impl StandRecord {
-    /// Open a new [`StandRecord`] at the given path. Do not include the ".csv" file extension in
-    /// the given path, it will be appended by this function.
+    /// Open a new [`StandRecord`] at the given path. The [`StandRecord`] creates a CSV, so the
+    /// extension in the given path may want to reflect that, though this is not enforced.
     ///
     /// [`StandRecord`]: StandRecord
-    pub fn open<P>(path: P, mut field_names: Vec<String>) -> io::Result<StandRecord>
+    pub fn open<P>(path: P, field_names: Vec<String>) -> io::Result<StandRecord>
     where
         P: AsRef<Path>,
     {
-        let mut file = File::create(path.as_ref().with_extension("csv"))?;
-
-        field_names.reverse();
-        field_names.push("Time (Seconds)".to_string());
-        field_names.reverse();
-
+        let mut file = File::create(path.as_ref())?;
         let field_names_row = field_names
             .iter()
-            .fold(String::new(), |acc, i| format!("{acc},{i}"));
+            .fold("Time (Seconds)".to_string(), |acc, i| format!("{acc},{i}"));
+        let row = format!("{field_names_row}\n");
 
-        file.write_all(&mut field_names_row.into_bytes())?;
+        file.write_all(&mut row.into_bytes())?;
         file.flush()?;
 
         Ok(StandRecord {
@@ -51,7 +47,7 @@ impl StandRecord {
     /// [`SensorField`]: SensorField
     /// [`StandRecord`]: StandRecord
     /// [`StandRecord::open`]: StandRecord::open
-    pub fn append_frame(&mut self, fields: Vec<SensorField>) -> io::Result<()> {
+    pub fn append_frame(&mut self, fields: &[SensorField]) -> io::Result<()> {
         let now = SystemTime::now()
             .duration_since(self.start_time)
             .unwrap_or(Duration::from_secs(0));
@@ -74,6 +70,7 @@ impl StandRecord {
                 }
             });
 
+        let row = format!("{row}\n");
         self.file.write_all(&mut row.as_bytes())?;
         self.file.flush()?;
 

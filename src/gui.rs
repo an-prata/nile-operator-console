@@ -1,13 +1,9 @@
 use crate::{
-    diagram::Diagram,
-    field_history::ValueHistory,
-    sequence::{Command, CommandSequence, ValveHandle},
-    serial::{self, FieldReciever, SensorField, SensorValue},
-    stand::{StandMode, StandState}
+    diagram::Diagram, field_history::ValueHistory, record::StandRecord, sequence::{Command, CommandSequence, ValveHandle}, serial::{self, FieldReciever, SensorField, SensorValue}, stand::{StandMode, StandState}
 };
 use eframe::egui::{self, Color32};
 use std::{
-    fs, io::Write, sync::mpsc::SendError, time::Duration
+    sync::mpsc::SendError, time::Duration
 };
 
 /// Starts the graphical part of the app.
@@ -51,7 +47,6 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result
 
                 diagram,
 
-                record_field: "Field to Record".to_string(),
                 record_file_path: "Enter Path".to_string(),
                 record_file: None
             }))
@@ -83,9 +78,8 @@ pub struct GuiApp {
 
     diagram: Diagram,
 
-    record_field: String,
     record_file_path: String,
-    record_file: Option<fs::File>
+    record_file: Option<StandRecord>
 }
 
 impl GuiApp {
@@ -124,6 +118,12 @@ impl GuiApp {
                 value,
             })
             .collect();
+
+        if let Some(record) = &mut self.record_file {
+            if let Err(e) = record.append_frame(&fields) {
+                log::error!("Failed to append record frame: {e}");
+            }
+        }
 
         let old_state = self.stand_state.clone();
         self.stand_state.update(&fields);
@@ -321,56 +321,32 @@ impl eframe::App for GuiApp {
                 });
 
                 right.vertical(|ui| {
-                    ui.label("Record this field:");
-                    ui.text_edit_singleline(&mut self.record_field);
-                    
-                    ui.label("To this file:");
+                    ui.label("Record Fields To:");
                     ui.text_edit_singleline(&mut self.record_file_path);
 
-                    let should_close = match &mut self.record_file {
-                        Some(file) => {
-                            match self.field_reciever.fields().find(|field| field.0.as_str() == self.record_field.as_str()) {
-                                Some(field) => {
-                                    let value = match field.1 {
-                                        SensorValue::UnsignedInt(v) => format!("{}\n", v),
-                                        SensorValue::SignedInt(v) => format!("{}\n", v),
-                                        SensorValue::Float(v) => format!("{}\n", v),
-                                        SensorValue::Boolean(v) => format!("{}\n", v),
-                                    };
-
-                                    if let Err(e) = file.write_all(value.as_bytes()) {
-                                        log::error!("Failed to write to record file: {e} ...");
-                                    }
-                                }
-
-                                 None => {
-                                     log::warn!("No value to record!");
-                                 }
+                    // handle open/close of record
+                    match self.record_file {
+                        Some(_) => {
+                            if ui.button("Stop Recording").clicked() {
+                                self.record_file = None;
                             }
-
-                            if ui.button(format!("Stop Recording '{}'", self.record_field)).clicked() {
-                                let _ = file.flush();
-                                true
-                            } else { false }
                         }
 
                         None => {
-                            if ui.button(format!("Start Recording '{}'", self.record_field)).clicked() {
-                                if let Ok(f) = fs::File::create(self.record_file_path.as_str()) {
-                                    self.record_file = Some(f);
+                            if ui.button("Start Recording").clicked() {
+                                let names: Vec<String> = self.field_reciever.fields().map(|(k, _)| k.to_owned()).collect();
+
+                                if let Ok(record) = StandRecord::open(self.record_file_path.as_str(), names) {
+                                    self.record_file = Some(record);
                                 } else {
                                     log::error!("Failed to open record file at {}! Not Recording!", self.record_file_path);
                                 }
                             }
-
-                            false
                         }
                     };
 
-                    if should_close {
-                        self.record_file = None;
-                    }
                 });
+
                 right.vertical(|ui| {
                         self.make_plot(ui, "upper".to_string(), Some(ui.available_height() / 2.1),ui.available_width());
                         ui.columns_const(|[left, right]| {
