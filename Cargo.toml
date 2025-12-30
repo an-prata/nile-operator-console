@@ -11,3 +11,7 @@ log = "0.4.28"
 simplelog = "0.12.2"
 image = { version = "0.25.8", features = ["jpeg", "png"] }
 egui_plot = "0.34.0"
+
+[features]
+default = []
+sim_io = []

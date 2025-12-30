@@ -1,3 +1,4 @@
+use crate::sequence::CommandSequence;
 use serialport::{SerialPort, SerialPortInfo, SerialPortType, UsbPortInfo};
 use std::{
     collections::{HashMap, hash_map},
@@ -8,8 +9,6 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
-
-use crate::sequence::CommandSequence;
 
 const CHECKED_FIELD_NAMES: [&'static str; 16] = [
     "NP1_OPEN",
@@ -96,9 +95,9 @@ pub fn available_usb_ports() -> serialport::Result<Vec<UsbSerialPortInfo>> {
 pub fn open_field_port(
     port: &UsbSerialPortInfo,
     baud: u32,
-) -> serialport::Result<FieldReader<Box<dyn SerialPort>>> {
+) -> serialport::Result<FieldIO<Box<dyn SerialPort>>> {
     let port = open_port(port, baud)?;
-    Ok(FieldReader::new(port))
+    Ok(FieldIO::new(port))
 }
 
 /// Opens the USB port described by the given [`UsbSerialPortInfo`] for serial read/write at the
@@ -119,7 +118,7 @@ pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<
 /// [`SensorField`]: SensorField
 /// [`FieldSender`]: FieldSender
 /// [`FieldReciever`]: FieldReciever
-pub fn start_field_thread<R>(field_reader: FieldReader<R>) -> FieldReciever
+pub fn start_field_thread<R>(field_reader: FieldIO<R>) -> FieldReciever
 where
     R: 'static + Read + Write + Send,
 {
@@ -145,18 +144,37 @@ where
     field_reciever
 }
 
+pub fn start_simulation_field_thread<R>(field_reader: FieldIO<R>) -> FieldReciever
+where
+    R: 'static + Read + Send,
+{
+    let (field_sender, field_reciever) = field_channel(field_reader);
+
+    thread::spawn(move || -> Result<(), SensorFieldReadError> {
+        let mut field_sender = field_sender;
+
+        loop {
+            if let Err(e) = field_sender.send_fields() {
+                log::error!("Field sender had error: {e}");
+            }
+        }
+    });
+
+    field_reciever
+}
+
 /// Create a multiple producer single consumer senser reciever channel pair for [`SensorField`]s.
 ///
 /// [`SensorField`]: SensorField
-pub fn field_channel<R>(field_reader: FieldReader<R>) -> (FieldSender<R>, FieldReciever)
+pub fn field_channel<R>(field_reader: FieldIO<R>) -> (FieldSender<R>, FieldReciever)
 where
-    R: 'static + Read + Write + Send,
+    R: 'static + Read + Send,
 {
     let (read_tx, read_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
 
     let sender = FieldSender {
-        reader: field_reader.reader,
+        reader: field_reader.device,
         remainder: field_reader.remainder,
         read_tx,
         command_rx,
@@ -192,7 +210,7 @@ pub struct FieldReciever {
 #[derive(Debug)]
 pub struct FieldSender<R>
 where
-    R: 'static + Read + Write + Send,
+    R: 'static + Send,
 {
     reader: R,
     remainder: String,
@@ -265,7 +283,7 @@ impl FieldReciever {
 
 impl<R> FieldSender<R>
 where
-    R: 'static + Read + Write + Send,
+    R: 'static + Read + Send,
 {
     /// Read as many [`SensorField`]s as possible from the internal [`Read`] instance and send them
     /// over the channel for the corrosponding [`FieldReciever`].
@@ -285,7 +303,12 @@ where
 
         Ok(())
     }
+}
 
+impl<R> FieldSender<R>
+where
+    R: 'static + Write + Send,
+{
     /// Recieve [`ValveCommand`]s from the [`FieldReciever`] and send them down serial.
     ///
     /// [`ValveCommand`]: ValveCommand
@@ -305,22 +328,24 @@ where
         Ok(())
     }
 }
-
-/// Holds a [`Read`] as well as some internal state for reading out [`SensorField`]s.
+/// A wrapper over an I/O device or pair of input and output devices which is intended for
+/// exchanging field (which should be the input) and commands (which this program should output).
+/// The type argument given should usually implement _both_ [`Read`] and [`Write`], but need not
+/// implement [`Write`] if only reading is needed.
 ///
 /// [`Read`]: Read
-/// [`SensorField`]: SensorField
+/// [`Write`]: Write
 #[derive(Debug)]
-pub struct FieldReader<R>
+pub struct FieldIO<R>
 where
     R: Read,
 {
-    reader: R,
+    device: R,
     remainder: String,
     fields: HashMap<String, SensorValue>,
 }
 
-impl<R> FieldReader<R>
+impl<R> FieldIO<R>
 where
     R: Read,
 {
@@ -330,7 +355,7 @@ where
     /// [`Read`]: Read
     pub fn new(reader: R) -> Self {
         Self {
-            reader,
+            device: reader,
             remainder: String::new(),
             fields: HashMap::new(),
         }

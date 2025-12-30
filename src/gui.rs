@@ -2,18 +2,16 @@ use crate::{
     diagram::Diagram,
     field_history::ValueHistory,
     sequence::{Command, CommandSequence, ValveHandle},
-    serial::{self, FieldReader, FieldReciever, SensorField, SensorValue},
+    serial::{self, FieldReciever, SensorField, SensorValue},
     stand::{StandMode, StandState}
 };
 use eframe::egui::{self, Color32};
 use std::{
-    fs, io::{Read, Write}, sync::mpsc::SendError, time::Duration
+    fs, io::Write, sync::mpsc::SendError, time::Duration
 };
 
 /// Starts the graphical part of the app.
-pub fn start_gui<R>(field_reader: FieldReader<R>) -> eframe::Result
-where
-    R: 'static + Read + Write + Send,
+pub fn start_gui(field_rx: FieldReciever) -> eframe::Result
 {
     let gui_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -25,7 +23,6 @@ where
         ..eframe::NativeOptions::default()
     };
 
-    let field_reciever = serial::start_field_thread(field_reader);
     let diagram = Diagram::from_bytes(include_bytes!("../NILE P&ID.png"))
         .expect("Diagram should be valid image");
 
@@ -49,7 +46,7 @@ where
                 valve_np1_ip1_offset_text: "0".to_string(),
                 valve_np1_ip1_offset: 0.0,
 
-                field_reciever,
+                field_reciever: field_rx,
                 field_histories: Vec::new(),
 
                 diagram,

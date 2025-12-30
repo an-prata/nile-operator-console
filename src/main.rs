@@ -7,6 +7,8 @@ use std::{
     process::exit,
 };
 
+use crate::serial::{start_field_thread, start_simulation_field_thread};
+
 mod diagram;
 mod field_history;
 mod gui;
@@ -24,12 +26,31 @@ fn main() -> eframe::Result {
     )
     .expect("Could not initialize logging");
 
-    gui::start_gui(get_field_reader())
+    #[cfg(feature = "sim_io")]
+    {
+        let sim_device = sim_field_io(b"");
+        let field_rx = start_simulation_field_thread(sim_device);
+        gui::start_gui(field_rx)
+    }
+
+    #[cfg(not(feature = "sim_io"))]
+    {
+        let io_device = get_field_io_device();
+        let field_rx = start_field_thread(io_device);
+        gui::start_gui(field_rx)
+    }
+}
+
+/// Creates a dumby simulation [`FieldIO`] device which just reads off the given slice.
+///
+/// [`FieldIO`]: FieldIO
+fn sim_field_io<'a>(buf: &'a [u8]) -> serial::FieldIO<&'a [u8]> {
+    serial::FieldIO::new(buf)
 }
 
 /// Prompt the user to select one of the available USB serial connections and return it. This
 /// function handles errors itself, logging them and exiting the program as a whole.
-fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
+fn get_field_io_device() -> serial::FieldIO<Box<dyn SerialPort>> {
     let usb_ports = match serial::available_usb_ports() {
         Ok(ports) => ports,
 
@@ -65,7 +86,7 @@ fn get_field_reader() -> serial::FieldReader<Box<dyn SerialPort>> {
     };
 
     if buffer.as_str() == "r\n" {
-        return get_field_reader();
+        return get_field_io_device();
     }
 
     let port_number: Option<usize> = buffer.trim().parse().ok();
