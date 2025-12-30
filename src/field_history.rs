@@ -21,7 +21,10 @@ where
         }
     }
 
-    pub fn top(&self) -> Option<&T> {
+    /// Gets the latest value `T` in the [`ValueHistory`].
+    ///
+    /// [`ValueHistory`]: ValueHistory
+    pub fn latest(&self) -> Option<&T> {
         self.history.last().map(|hist| &hist.value)
     }
 
@@ -32,7 +35,15 @@ where
         self.history.push(HistoricalValue::from_now(value));
     }
 
-    pub fn as_point_span(&self, span: Duration) -> Vec<(Duration, T)> {
+    /// Creates a [`Vec`] of "points", where the x-axis is the length of time between the present
+    /// moment and the time the value, which is the y-axis, was added to the [`ValueHistory`].
+    /// [`Duration`]s are of course always positive, but if you were to interperet the time of the
+    /// [`Duration`] as a delta-time it would be negative.
+    ///
+    /// [`Vec`]: Vec
+    /// [`Duration`]: Duration
+    /// [`ValueHistory`]: ValueHistory
+    pub fn as_points(&self, span: Duration) -> Vec<(Duration, T)> {
         let now = SystemTime::now();
 
         self.history

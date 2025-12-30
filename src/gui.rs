@@ -1,17 +1,21 @@
 use crate::{
-    diagram::Diagram, field_history::ValueHistory, record::StandRecord, sequence::{Command, CommandSequence, ValveHandle}, serial::{self, FieldReciever, SensorField, SensorValue}, stand::{StandMode, StandState}
+    diagram::Diagram,
+    field_history::ValueHistory,
+    record::StandRecord,
+    sequence::{Command, CommandSequence, ValveHandle},
+    serial::{self, FieldReciever, SensorField, SensorValue},
+    stand::{StandMode, StandState},
 };
 use eframe::egui::{self, Color32};
-use std::{
-    sync::mpsc::SendError, time::Duration
-};
+use std::{collections::HashMap, hash::Hash, sync::mpsc::SendError, time::Duration};
+
+const HISTORY_LENGTH: Duration = Duration::from_secs(60);
 
 /// Starts the graphical part of the app.
-pub fn start_gui(field_rx: FieldReciever) -> eframe::Result
-{
+pub fn start_gui(field_rx: FieldReciever) -> eframe::Result {
     let gui_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("NILE Stand")
+            .with_title("NILE Operator Console")
             .with_inner_size([720.0, 560.0]),
 
         hardware_acceleration: eframe::HardwareAcceleration::Preferred,
@@ -23,14 +27,14 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result
         .expect("Diagram should be valid image");
 
     eframe::run_native(
-        "NILE Stand",
+        "NILE Operator Console",
         gui_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
             Ok(Box::new(GuiApp {
                 serial_conn_has_died: false,
-                
+
                 stand_state: StandState::default(),
                 stand_state_changed: true, // True so that stuff updates frame 1
 
@@ -43,12 +47,12 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result
                 valve_np1_ip1_offset: 0.0,
 
                 field_reciever: field_rx,
-                field_histories: Vec::new(),
+                field_histories: HashMap::new(),
 
                 diagram,
 
                 record_file_path: "Enter Path".to_string(),
-                record_file: None
+                record_file: None,
             }))
         }),
     )
@@ -57,7 +61,7 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result
 /// Type holding the state of the app's GUI.
 pub struct GuiApp {
     serial_conn_has_died: bool,
-    
+
     /// State of the NILE test stand, as reported over serial.
     stand_state: StandState,
 
@@ -67,19 +71,30 @@ pub struct GuiApp {
     /// Whether or not to show the ox mode transition failure popup window.
     ox_fail_popup: bool,
 
+    /// The text entered by the user for the duration of the engine burn.
     fire_time_text: String,
+    /// The parsed time of the engine burn in the firing sequence.
     fire_time: Duration,
 
+    /// Text entered by the user for the offset between the actuation of the two valves used for
+    /// firing the engine.
     valve_np1_ip1_offset_text: String,
+    /// The parsed delay (signed to indicate order) between the actuation of NP1 and IP1 during
+    /// firing.
     valve_np1_ip1_offset: f32,
 
+    /// The I/O or simulation device from which we get field values and send commands.
     field_reciever: FieldReciever,
-    field_histories: Vec<ValueHistory<SensorField>>,
+    /// A history of field values used for
+    field_histories: HashMap<String, ValueHistory<SensorField>>,
 
+    /// The piping and instrumentation diagram which displays the valve states visually.
     diagram: Diagram,
 
+    /// CSV file path for saving/recording the history of all fields we get.
     record_file_path: String,
-    record_file: Option<StandRecord>
+    /// The actual CSV record of fields.
+    record_file: Option<StandRecord>,
 }
 
 impl GuiApp {
@@ -130,18 +145,22 @@ impl GuiApp {
         self.stand_state_changed = old_state != self.stand_state;
 
         for field in fields {
-            let maybe_find = self.field_histories.iter_mut().find_map(|hist| match hist.top() {
-                Some(top) if top.name == field.name => Some(hist),
-                _ => None,
-            });
+            match self.field_histories.get_mut(&field.name) {
+                Some(hist) => {
+                    hist.push(field);
+                }
 
-            if let Some(history) = maybe_find {
-                history.push(field);
-            } else {
-                let mut hist = ValueHistory::new();
-                hist.push(field);
-                self.field_histories.push(hist);
+                None => {
+                    let mut hist = ValueHistory::new();
+                    let key = field.name.clone();
+                    hist.push(field);
+                    self.field_histories.insert(key, hist);
+                }
             }
+        }
+
+        for (_, history) in self.field_histories.iter_mut() {
+            history.prune(HISTORY_LENGTH);
         }
     }
 
@@ -206,46 +225,47 @@ impl GuiApp {
                 }
             };
         }
-    
+
         if let Err(e) = self.stand_state.transition_mode(mode) {
-            if self.stand_state.mode() == StandMode::OxygenFilling || mode == StandMode::OxygenFilling {
+            if self.stand_state.mode() == StandMode::OxygenFilling
+                || mode == StandMode::OxygenFilling
+            {
                 self.handle_oxygen_filling_failure();
             }
-            
+
             log::error!("Mode transition failed: {e}");
-        }        
+        }
     }
 
-    /// Creates a plot graph
-    fn make_plot(&mut self, ui: &mut egui::Ui, id: String, height: Option<f32>, width: f32) {
-        let mut plot = egui_plot::Plot::new(id).legend(egui_plot::Legend::default()).width(width);
-
-        if height.is_some() {
-            plot = plot.height(height.unwrap());
-        }
+    /// Adds an `egui` plot with the given dimensions to the [`egui::Ui`]. If the given width or
+    /// height is [`None`] then the plot will consume the available space. The plot will be filled
+    /// with field data from the stand.
+    ///
+    /// [`egui::Ui`]: egui::Ui
+    fn make_fields_plot(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: impl Hash,
+        height: Option<f32>,
+        width: Option<f32>,
+    ) {
+        let plot = egui_plot::Plot::new(id)
+            .legend(egui_plot::Legend::default())
+            .width(width.unwrap_or(ui.available_width()))
+            .height(height.unwrap_or(ui.available_height()));
 
         plot.show(ui, |plot_ui| {
-            for history in self.field_histories.iter_mut() {
-                let display_durration = Duration::from_secs(60);
-                history.prune(display_durration);
+            for (field_name, history) in self.field_histories.iter_mut() {
+                let points: Vec<egui_plot::PlotPoint> = history
+                    .as_points(HISTORY_LENGTH)
+                    .into_iter()
+                    .map(|(dur, t)| egui_plot::PlotPoint::new(-dur.as_secs_f64(), t.value.to_num()))
+                    .collect();
 
-                if let Some(name) = history.top().map(|t| t.name.as_str()) {
-                    let points: Vec<egui_plot::PlotPoint> =
-                        history
-                            .as_point_span(display_durration)
-                            .into_iter()
-                            .map(|(dur, t)| {
-                                egui_plot::PlotPoint::new(-dur.as_secs_f64(), t.value.to_num())
-                            })
-                            .collect();
-
-                    plot_ui.line(
-                        egui_plot::Line::new(
-                            name,
-                            egui_plot::PlotPoints::Owned(points)
-                        )
-                    );
-                }
+                plot_ui.line(egui_plot::Line::new(
+                    field_name,
+                    egui_plot::PlotPoints::Owned(points),
+                ));
             }
         });
     }
@@ -348,11 +368,12 @@ impl eframe::App for GuiApp {
                 });
 
                 right.vertical(|ui| {
-                        self.make_plot(ui, "upper".to_string(), Some(ui.available_height() / 2.1),ui.available_width());
-                        ui.columns_const(|[left, right]| {
-                            self.make_plot(left, "left".to_string(), None, left.available_width());
-                            self.make_plot(right, "right".to_string(),None, right.available_width());
-                        });
+                    self.make_fields_plot(ui, "upper".to_string(), Some(ui.available_height() / 2.1), None);
+
+                    ui.columns_const(|[left, right]| {
+                        self.make_fields_plot(left, "left".to_string(), None, None);
+                        self.make_fields_plot(right, "right".to_string(),None, None);
+                    });
                 });
 
 
@@ -447,7 +468,7 @@ impl eframe::App for GuiApp {
                             } else if valve_np1_ip1_offset_text_res.lost_focus() {
                                 self.valve_np1_ip1_offset_text = "0".to_string();
                             }
-                            
+
                             ui.label("\nEnter fire time:");
                             ui.horizontal(|ui| {
                                 let fire_time_text_res =
@@ -492,7 +513,7 @@ impl eframe::App for GuiApp {
                                             .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset.abs())))
                                             .then(Command::OpenValve(ValveHandle::NP1)),
                                     };
-                                    
+
                                     let seq = seq
                                         .then(Command::Wait(self.fire_time))
                                         .then(Command::Wait(Duration::from_secs(3)))
@@ -534,4 +555,3 @@ impl eframe::App for GuiApp {
         });
     }
 }
-
