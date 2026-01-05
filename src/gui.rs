@@ -43,6 +43,11 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result {
                 fire_time_text: "0".to_string(),
                 fire_time: Duration::default(),
 
+                target_ox_fuel_ratio: 1.0,
+                target_ox_fuel_ratio_text: "1.0".to_string(),
+                target_ox_fuel_deviation: 0.5,
+                target_ox_fuel_deviation_text: "1.0".to_string(),
+
                 valve_np1_ip1_offset_text: "0".to_string(),
                 valve_np1_ip1_offset: 0.0,
 
@@ -75,6 +80,11 @@ pub struct GuiApp {
     fire_time_text: String,
     /// The parsed time of the engine burn in the firing sequence.
     fire_time: Duration,
+
+    target_ox_fuel_ratio: f32,
+    target_ox_fuel_ratio_text: String,
+    target_ox_fuel_deviation: f32,
+    target_ox_fuel_deviation_text: String,
 
     /// Text entered by the user for the offset between the actuation of the two valves used for
     /// firing the engine.
@@ -255,7 +265,14 @@ impl GuiApp {
             .height(height.unwrap_or(ui.available_height()));
 
         plot.show(ui, |plot_ui| {
-            for (field_name, history) in self.field_histories.iter_mut() {
+            for (field_name, history) in
+                self.field_histories
+                    .iter_mut()
+                    .filter(|(k, _)| match k.as_str() {
+                        "NP1" | "NP2" | "NP3" | "NP4" | "IP1" | "IP2" | "IP3" => false,
+                        _ => true,
+                    })
+            {
                 let points: Vec<egui_plot::PlotPoint> = history
                     .as_points(HISTORY_LENGTH)
                     .into_iter()
@@ -334,9 +351,32 @@ impl eframe::App for GuiApp {
                 });
 
                 right.vertical(|ui| {
-                    egui::ScrollArea::both().show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-                        ui.label(self.make_fields_table());
+                    ui.columns_const(|[left, right]| {
+                        egui::ScrollArea::both().max_height(left.available_height() / 3f32).show(left, |ui| {
+                            ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+                            ui.label(self.make_fields_table());
+                        });
+
+                        right.label("Target Ox/Fuel Ratio:");
+                        right.text_edit_singleline(&mut self.target_ox_fuel_ratio_text);
+                        self.target_ox_fuel_ratio = match self.target_ox_fuel_ratio_text.parse() {
+                            Ok(n) => n,
+                            Err(_) => self.target_ox_fuel_ratio
+                        };
+
+                        right.label("Allowed Deviation from Target:");
+                        right.text_edit_singleline(&mut self.target_ox_fuel_deviation_text);
+                        self.target_ox_fuel_deviation = match self.target_ox_fuel_deviation_text.parse() {
+                            Ok(n) => n,
+                            Err(_) => self.target_ox_fuel_deviation
+                        };
+
+                        right.style_mut().visuals.code_bg_color = match self.field_reciever.fields().find(|(k, _)| k.as_str() == "Ox/Fuel Ratio") {
+                            Some((_, SensorValue::Float(ratio))) => ox_fuel_color(self.target_ox_fuel_ratio, self.target_ox_fuel_deviation, *ratio as _),
+                            _ => Color32::from_rgb(0, 0, 0),
+                        };
+
+                        right.code("Ox/Fuel")
                     });
                 });
 
@@ -553,5 +593,25 @@ impl eframe::App for GuiApp {
                 });
             });
         });
+    }
+}
+
+/// Computes the color of the "Ox/Fuel" label which is used to indicate a good/not good state of the
+/// Ox/Fuel ratio.
+fn ox_fuel_color(target: f32, deviation: f32, ratio: f32) -> Color32 {
+    if target > ratio {
+        let percent_difference = (target - ratio) / deviation;
+        Color32::from_rgb(
+            (255f32 * percent_difference) as _,
+            255 - (255f32 * percent_difference) as u8,
+            0,
+        )
+    } else {
+        let percent_difference = (ratio - target) / deviation;
+        Color32::from_rgb(
+            0,
+            255 - (255f32 * percent_difference) as u8,
+            (255f32 * percent_difference) as _,
+        )
     }
 }

@@ -32,7 +32,9 @@ fn main() -> eframe::Result {
 
     #[cfg(feature = "sim_io")]
     {
-        let sim_device = sim_field_io(b"NP1_OPEN:b=TRUE\nPT0:f=3.1415\n");
+        let sim_device = sim_field_io(
+            b"NP1:b=FALSE\nNP2:b=FALSE\nNP3:b=FALSE\nNP4:b=FALSE\nIP1:b=FALSE\nIP2:b=FALSE\nIP3:b=FALSE\nPT0:f=3.1415\nPT1:f=3\nPT2:f=2.718\nPT3:f=2\nScale Thrust:f=1.0\nScale Thrust Rate:f=1.0\nScale Ox:f=1.0\nScale Ox Rate:f=1.0\nScale Fuel:f=1.0\nScale Fuel Rate:f=1.0\nOx/Fuel Ratio:f=1.0\n",
+        );
         let field_rx = start_simulation_field_thread(sim_device);
         gui::start_gui(field_rx)
     }

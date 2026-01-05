@@ -31,13 +31,13 @@ impl StandState {
     }
 
     pub fn update(&mut self, fields: &[SensorField]) {
-        self.valve_np1 = valve_state("NP1_OPEN", &fields);
-        self.valve_np2 = valve_state("NP2_OPEN", &fields);
-        self.valve_np3 = valve_state("NP3_OPEN", &fields);
-        self.valve_np4 = valve_state("NP4_OPEN", &fields);
-        self.valve_ip1 = valve_state("IP1_OPEN", &fields);
-        self.valve_ip2 = valve_state("IP2_OPEN", &fields);
-        self.valve_ip3 = valve_state("IP3_OPEN", &fields);
+        self.valve_np1 = valve_state("NP1", &fields);
+        self.valve_np2 = valve_state("NP2", &fields);
+        self.valve_np3 = valve_state("NP3", &fields);
+        self.valve_np4 = valve_state("NP4", &fields);
+        self.valve_ip1 = valve_state("IP1", &fields);
+        self.valve_ip2 = valve_state("IP2", &fields);
+        self.valve_ip3 = valve_state("IP3", &fields);
     }
 
     pub fn mode(&self) -> StandMode {

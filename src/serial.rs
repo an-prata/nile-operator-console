@@ -10,23 +10,28 @@ use std::{
     time::Duration,
 };
 
-const CHECKED_FIELD_NAMES: [&'static str; 16] = [
-    "NP1_OPEN",
-    "NP2_OPEN",
-    "NP3_OPEN",
-    "NP4_OPEN",
-    "IP1_OPEN",
-    "IP2_OPEN",
-    "IP3_OPEN",
-    "Scale 0",
-    "Scale 0 Rate",
-    "Scale 1",
-    "Scale 1 Rate",
-    "Scale Rates Ratio",
+const CHECKED_FIELD_NAMES: [&'static str; 18] = [
+    // Valves
+    "NP1",
+    "NP2",
+    "NP3",
+    "NP4",
+    "IP1",
+    "IP2",
+    "IP3",
+    // Pressure Transducers
     "PT0",
     "PT1",
     "PT2",
     "PT3",
+    // Scales
+    "Scale Thrust",
+    "Scale Thrust Rate",
+    "Scale Ox",
+    "Scale Ox Rate",
+    "Scale Fuel",
+    "Scale Fuel Rate",
+    "Ox/Fuel Ratio",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
