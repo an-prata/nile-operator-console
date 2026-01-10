@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(not(feature = "allow_all_fields"))]
 const CHECKED_FIELD_NAMES: [&'static str; 18] = [
     // Valves
     "NP1",
@@ -123,6 +124,7 @@ pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<
 /// [`SensorField`]: SensorField
 /// [`FieldSender`]: FieldSender
 /// [`FieldReciever`]: FieldReciever
+#[cfg(not(feature = "sim_io"))]
 pub fn start_field_thread<R>(field_reader: FieldIO<R>) -> FieldReciever
 where
     R: 'static + Read + Write + Send,
@@ -149,6 +151,7 @@ where
     field_reciever
 }
 
+#[cfg(feature = "sim_io")]
 pub fn start_simulation_field_thread<R>(field_reader: FieldIO<R>) -> FieldReciever
 where
     R: 'static + Read + Send,
@@ -407,6 +410,8 @@ where
 
     // Remove the last line since it might not be a complete field, which would cause a parse error.
     let (lines, remainder) = text.rsplit_once('\n').unwrap_or(("", text.as_str()));
+
+    #[cfg(not(feature = "allow_all_fields"))]
     let fields = lines
         .lines()
         .map(|line| parse_sensor_field(line))
@@ -420,6 +425,13 @@ where
                 }
             },
         )
+        .collect();
+
+    #[cfg(feature = "allow_all_fields")]
+    let fields = lines
+        .lines()
+        .map(|line| parse_sensor_field(line))
+        .filter_map(Result::ok)
         .collect();
 
     Ok((remainder.to_string(), fields))
