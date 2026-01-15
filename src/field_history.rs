@@ -21,13 +21,6 @@ where
         }
     }
 
-    /// Gets the latest value `T` in the [`ValueHistory`].
-    ///
-    /// [`ValueHistory`]: ValueHistory
-    pub fn latest(&self) -> Option<&T> {
-        self.history.last().map(|hist| &hist.value)
-    }
-
     /// Pushes a new value onto the [`FieldHistory`], stamping it with the current time.
     ///
     /// [`FieldHistory`]: FieldHistory
