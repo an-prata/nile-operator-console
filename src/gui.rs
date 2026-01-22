@@ -371,8 +371,17 @@ impl eframe::App for GuiApp {
                             Err(_) => self.target_ox_fuel_deviation
                         };
 
-                        right.style_mut().visuals.code_bg_color = match self.field_reciever.fields().find(|(k, _)| k.as_str() == "Ox/Fuel Ratio") {
-                            Some((_, SensorValue::Float(ratio))) => ox_fuel_color(self.target_ox_fuel_ratio, self.target_ox_fuel_deviation, *ratio as _),
+                        right.style_mut().visuals.code_bg_color = match self.field_histories.get("Ox/Fuel Ratio") {
+                            Some(hist) => {
+                                let points: Vec<f64> = hist
+                                    .as_points(Duration::from_secs(3))
+                                    .iter()
+                                    .map(|(_, val)| val.value.to_num())
+                                    .collect();
+                                let window = &points[(points.len() - 4) .. points.len()];
+                                let ratio = window.iter().sum::<f64>() / window.len() as f64;
+                                ox_fuel_color(self.target_ox_fuel_ratio, self.target_ox_fuel_deviation, ratio as _)
+                            }
                             _ => Color32::from_rgb(0, 0, 0),
                         };
 
