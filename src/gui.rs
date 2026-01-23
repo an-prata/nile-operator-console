@@ -378,7 +378,7 @@ impl eframe::App for GuiApp {
                                     .iter()
                                     .map(|(_, val)| val.value.to_num())
                                     .collect();
-                                let window = &points[(points.len() - 4) .. points.len()];
+                                let window = &points[points.len().saturating_sub(4) .. points.len()];
                                 let ratio = window.iter().sum::<f64>() / window.len() as f64;
                                 ox_fuel_color(self.target_ox_fuel_ratio, self.target_ox_fuel_deviation, ratio as _)
                             }
