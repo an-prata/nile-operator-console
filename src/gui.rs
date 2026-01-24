@@ -7,7 +7,12 @@ use crate::{
     stand::{StandMode, StandState},
 };
 use eframe::egui::{self, Color32};
-use std::{collections::HashMap, hash::Hash, sync::mpsc::SendError, time::Duration};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    sync::mpsc::SendError,
+    time::{Duration, SystemTime},
+};
 
 const HISTORY_LENGTH: Duration = Duration::from_secs(60);
 
@@ -36,6 +41,7 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result {
                 serial_conn_has_died: false,
 
                 stand_state: StandState::default(),
+                last_update_time: None,
                 stand_state_changed: true, // True so that stuff updates frame 1
 
                 ox_fail_popup: false,
@@ -69,6 +75,8 @@ pub struct GuiApp {
 
     /// State of the NILE test stand, as reported over serial.
     stand_state: StandState,
+
+    last_update_time: Option<SystemTime>,
 
     /// Whether or not the NILE test stand's state has changed in the last state update.
     stand_state_changed: bool,
@@ -114,9 +122,17 @@ impl GuiApp {
     /// [`FieldReciever`]: FieldReciever
     /// [`SensorField`]: serial::SensorField
     fn recieve_fields(&mut self) {
-        if let Err(_) = self.field_reciever.recieve_fields() {
-            self.serial_conn_has_died = true;
-            log::error!("Serial connection has died!");
+        match self.field_reciever.recieve_fields() {
+            Ok(0) => return,
+
+            Ok(_) => {
+                self.last_update_time = Some(SystemTime::now());
+            }
+
+            Err(_) => {
+                self.serial_conn_has_died = true;
+                log::error!("Serial connection has died!");
+            }
         }
     }
 
@@ -317,7 +333,17 @@ impl eframe::App for GuiApp {
             ui.columns_const(|[left, right]| {
                 // Right side:
                 egui::TopBottomPanel::top("Right Column Top Panel")
-                    .show_inside(right, |ui| ui.label("NILE Stand Telemetry:"));
+                    .show_inside(right, |ui| match self.last_update_time {
+                        Some(time) => match SystemTime::now().duration_since(time) {
+                            Ok(duration) => ui.label(
+                                format!("NILE Stand Telemetry (Last Update {}ms ago)", duration.as_millis())
+                            ),
+                            
+                            Err(_) => ui.label("NILE Stand Telemetry (Error Computing Staleness)")
+                        }
+
+                        None => ui.label("NILE Stand Telemetry (No Data)")
+                    });
 
                 right.horizontal_wrapped(|ui| {
                     ui.label("Stand Mode: ");
