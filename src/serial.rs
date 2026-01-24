@@ -11,7 +11,7 @@ use std::{
 };
 
 #[cfg(not(feature = "allow_all_fields"))]
-const CHECKED_FIELD_NAMES: [&'static str; 18] = [
+const CHECKED_FIELD_NAMES: [&'static str; 20] = [
     // Valves
     "NP1",
     "NP2",
@@ -21,10 +21,10 @@ const CHECKED_FIELD_NAMES: [&'static str; 18] = [
     "IP2",
     "IP3",
     // Pressure Transducers
-    "PT0",
-    "PT1",
-    "PT2",
-    "PT3",
+    "NPT1",
+    "NPT3",
+    "IPT1",
+    "IPT3",
     // Scales
     "Scale Thrust",
     "Scale Thrust Rate",
@@ -33,6 +33,9 @@ const CHECKED_FIELD_NAMES: [&'static str; 18] = [
     "Scale Fuel",
     "Scale Fuel Rate",
     "Ox/Fuel Ratio",
+    // Diagnostic
+    "Update Time",
+    "Update Rate",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
@@ -243,21 +246,28 @@ impl FieldReciever {
     /// encounters [`TryRecvError::Empty`] it returns [`Ok`]. If this function returns an error it
     /// is a genuine failure.
     ///
+    /// Returns the number of updated fields.
+    ///
     /// [`SensorField`]: SensorField
     /// [`FieldReviever`]: FieldReviever
     /// [`TryRecvError::Empty`]: TryRecvError::Empty
     /// [`Ok`]: Ok
-    pub fn recieve_fields(&mut self) -> Result<(), TryRecvError> {
+    pub fn recieve_fields(&mut self) -> Result<u32, TryRecvError> {
+        let mut count = 0;
+
         loop {
             match self.read_rx.try_recv() {
                 Ok(field) => {
                     self.fields.insert(field.name, field.value);
+                    count += 1;
                 }
 
-                Err(TryRecvError::Empty) => return Ok(()),
+                Err(TryRecvError::Empty) => break,
                 Err(e) => return Err(e),
             }
         }
+
+        Ok(count)
     }
 
     /// Send a [`ValveCommand`] to the [`FieldSender`] to be sent down serial.
@@ -420,7 +430,10 @@ where
             |field| match CHECKED_FIELD_NAMES.contains(&field.name.as_str()) {
                 true => Some(field),
                 false => {
-                    log::warn!("Discarded field!");
+                    log::warn!(
+                        "Field '{}' was recieved but discarded!",
+                        field.name.as_str()
+                    );
                     None
                 }
             },
