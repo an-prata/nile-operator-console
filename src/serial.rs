@@ -11,7 +11,7 @@ use std::{
 };
 
 #[cfg(not(feature = "allow_all_fields"))]
-const CHECKED_FIELD_NAMES: [&'static str; 20] = [
+const CHECKED_FIELD_NAMES: [&'static str; 21] = [
     // Valves
     "NP1",
     "NP2",
@@ -36,6 +36,7 @@ const CHECKED_FIELD_NAMES: [&'static str; 20] = [
     // Diagnostic
     "Update Time",
     "Update Rate",
+    "Bytes Recieved",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
