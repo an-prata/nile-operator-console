@@ -585,8 +585,7 @@ impl eframe::App for GuiApp {
                                         .then(Command::OpenValve(ValveHandle::NP3))
                                         .then(Command::OpenValve(ValveHandle::IP3))
                                         .then(Command::Wait(Duration::from_secs(2)))
-                                        .then(Command::CloseValve(ValveHandle::NP1))
-                                        .then(Command::CloseValve(ValveHandle::IP1))
+                                        .then(Command::CloseValve(ValveHandle::Engine))
                                         .then(Command::Done);
 
                                     if !self.serial_conn_has_died {
