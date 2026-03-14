@@ -132,6 +132,7 @@ impl StandMode {
                 serial::NILE_VALVE_IP1,
                 serial::NILE_VALVE_IP2,
                 serial::NILE_VALVE_IP3,
+                serial::NILE_VALVE_ENGINE,
             ],
 
             Self::OxygenFilling => vec![serial::NILE_VALVE_NP3, serial::NILE_VALVE_NP4],

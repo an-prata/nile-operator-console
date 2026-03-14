@@ -576,20 +576,8 @@ impl eframe::App for GuiApp {
                                     let wait_time = Duration::from_secs(1);
                                     let seq = CommandSequence::new()
                                         .then(Command::Ignite)
-                                        .then(Command::Wait(wait_time));
-
-                                    let seq = match self.valve_np1_ip1_offset >= 0f32 {
-                                        true => seq
-                                            .then(Command::OpenValve(ValveHandle::NP1))
-                                            .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset)))
-                                            .then(Command::OpenValve(ValveHandle::IP1)),
-                                        false => seq
-                                            .then(Command::OpenValve(ValveHandle::IP1))
-                                            .then(Command::Wait(Duration::from_secs_f32(self.valve_np1_ip1_offset.abs())))
-                                            .then(Command::OpenValve(ValveHandle::NP1)),
-                                    };
-
-                                    let seq = seq
+                                        .then(Command::Wait(wait_time))
+                                        .then(Command::OpenValve(ValveHandle::Engine))
                                         .then(Command::Wait(self.fire_time))
                                         .then(Command::Wait(Duration::from_secs(3)))
                                         .then(Command::CloseValve(ValveHandle::NP2))

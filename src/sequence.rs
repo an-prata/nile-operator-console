@@ -108,6 +108,7 @@ pub enum ValveHandle {
     IP1,
     IP2,
     IP3,
+    Engine,
 }
 
 impl Display for ValveHandle {
@@ -120,6 +121,7 @@ impl Display for ValveHandle {
             ValveHandle::IP1 => write!(f, "IP1"),
             ValveHandle::IP2 => write!(f, "IP2"),
             ValveHandle::IP3 => write!(f, "IP3"),
+            ValveHandle::Engine => write!(f, "ENG"),
         }
     }
 }

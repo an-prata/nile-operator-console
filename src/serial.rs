@@ -11,7 +11,7 @@ use std::{
 };
 
 #[cfg(not(feature = "allow_all_fields"))]
-const CHECKED_FIELD_NAMES: [&'static str; 21] = [
+const CHECKED_FIELD_NAMES: [&'static str; 24] = [
     // Valves
     "NP1",
     "NP2",
@@ -37,6 +37,9 @@ const CHECKED_FIELD_NAMES: [&'static str; 21] = [
     "Update Time",
     "Update Rate",
     "Bytes Recieved",
+    "Stand Time",
+    "SP Time",
+    "SP Rate",
 ];
 
 /// Like [`SerialPortInfo`], but specialized to ports with of type [`SerialPortType::UsbPort`].
@@ -476,6 +479,7 @@ pub const NILE_VALVE_NP4: &'static str = "NP4";
 pub const NILE_VALVE_IP1: &'static str = "IP1";
 pub const NILE_VALVE_IP2: &'static str = "IP2";
 pub const NILE_VALVE_IP3: &'static str = "IP3";
+pub const NILE_VALVE_ENGINE: &'static str = "ENG";
 
 /// A command for actuating valves on NILE.
 #[derive(Clone, Eq, PartialEq)]
