@@ -62,7 +62,6 @@ impl CommandSequence {
 pub enum Command {
     OpenValve(ValveHandle),
     CloseValve(ValveHandle),
-    Ignite,
     Wait(Duration),
     Done,
 }
@@ -81,8 +80,6 @@ impl Command {
             Command::CloseValve(valve_handle) => {
                 tx.send(format!("\nCLOSE:{valve_handle}\n").into_bytes())
             }
-
-            Command::Ignite => tx.send("\nIGNITE\n".to_string().into_bytes()),
 
             Command::Wait(duration) => {
                 thread::sleep(duration);
@@ -109,6 +106,7 @@ pub enum ValveHandle {
     IP2,
     IP3,
     Engine,
+    Match,
 }
 
 impl Display for ValveHandle {
@@ -122,6 +120,7 @@ impl Display for ValveHandle {
             ValveHandle::IP2 => write!(f, "IP2"),
             ValveHandle::IP3 => write!(f, "IP3"),
             ValveHandle::Engine => write!(f, "ENG"),
+            ValveHandle::Match => write!(f, "MCH"),
         }
     }
 }

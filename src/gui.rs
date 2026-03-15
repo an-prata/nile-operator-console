@@ -575,7 +575,7 @@ impl eframe::App for GuiApp {
 
                                     let wait_time = Duration::from_secs(1);
                                     let seq = CommandSequence::new()
-                                        .then(Command::Ignite)
+                                        .then(Command::OpenValve(ValveHandle::Match))
                                         .then(Command::Wait(wait_time))
                                         .then(Command::OpenValve(ValveHandle::Engine))
                                         .then(Command::Wait(self.fire_time))
