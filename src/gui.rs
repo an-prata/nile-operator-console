@@ -46,6 +46,7 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result {
 
                 ox_fail_popup: false,
 
+                selected_en: ValveHandle::Engine1,
                 fire_time_text: "0".to_string(),
                 fire_time: Duration::default(),
 
@@ -53,9 +54,6 @@ pub fn start_gui(field_rx: FieldReciever) -> eframe::Result {
                 target_ox_fuel_ratio_text: "1.0".to_string(),
                 target_ox_fuel_deviation: 0.5,
                 target_ox_fuel_deviation_text: "1.0".to_string(),
-
-                valve_np1_ip1_offset_text: "0".to_string(),
-                valve_np1_ip1_offset: 0.0,
 
                 field_reciever: field_rx,
                 field_histories: HashMap::new(),
@@ -84,6 +82,7 @@ pub struct GuiApp {
     /// Whether or not to show the ox mode transition failure popup window.
     ox_fail_popup: bool,
 
+    selected_en: ValveHandle,
     /// The text entered by the user for the duration of the engine burn.
     fire_time_text: String,
     /// The parsed time of the engine burn in the firing sequence.
@@ -93,13 +92,6 @@ pub struct GuiApp {
     target_ox_fuel_ratio_text: String,
     target_ox_fuel_deviation: f32,
     target_ox_fuel_deviation_text: String,
-
-    /// Text entered by the user for the offset between the actuation of the two valves used for
-    /// firing the engine.
-    valve_np1_ip1_offset_text: String,
-    /// The parsed delay (signed to indicate order) between the actuation of NP1 and IP1 during
-    /// firing.
-    valve_np1_ip1_offset: f32,
 
     /// The I/O or simulation device from which we get field values and send commands.
     field_reciever: FieldReciever,
@@ -332,18 +324,20 @@ impl eframe::App for GuiApp {
         egui::CentralPanel::default().show(&ctx, |ui| {
             ui.columns_const(|[left, right]| {
                 // Right side:
-                egui::TopBottomPanel::top("Right Column Top Panel")
-                    .show_inside(right, |ui| match self.last_update_time {
+                egui::TopBottomPanel::top("Right Column Top Panel").show_inside(right, |ui| {
+                    match self.last_update_time {
                         Some(time) => match SystemTime::now().duration_since(time) {
-                            Ok(duration) => ui.label(
-                                format!("NILE Stand Telemetry (Last Update {}ms ago)", duration.as_millis())
-                            ),
-                            
-                            Err(_) => ui.label("NILE Stand Telemetry (Error Computing Staleness)")
-                        }
+                            Ok(duration) => ui.label(format!(
+                                "NILE Stand Telemetry (Last Update {}ms ago)",
+                                duration.as_millis()
+                            )),
 
-                        None => ui.label("NILE Stand Telemetry (No Data)")
-                    });
+                            Err(_) => ui.label("NILE Stand Telemetry (Error Computing Staleness)"),
+                        },
+
+                        None => ui.label("NILE Stand Telemetry (No Data)"),
+                    }
+                });
 
                 right.horizontal_wrapped(|ui| {
                     ui.label("Stand Mode: ");
@@ -378,38 +372,48 @@ impl eframe::App for GuiApp {
 
                 right.vertical(|ui| {
                     ui.columns_const(|[left, right]| {
-                        egui::ScrollArea::both().max_height(left.available_height() / 3f32).show(left, |ui| {
-                            ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-                            ui.label(self.make_fields_table());
-                        });
+                        egui::ScrollArea::both()
+                            .max_height(left.available_height() / 3f32)
+                            .show(left, |ui| {
+                                ui.style_mut().override_text_style =
+                                    Some(egui::TextStyle::Monospace);
+                                ui.label(self.make_fields_table());
+                            });
 
                         right.label("Target Ox/Fuel Ratio:");
                         right.text_edit_singleline(&mut self.target_ox_fuel_ratio_text);
                         self.target_ox_fuel_ratio = match self.target_ox_fuel_ratio_text.parse() {
                             Ok(n) => n,
-                            Err(_) => self.target_ox_fuel_ratio
+                            Err(_) => self.target_ox_fuel_ratio,
                         };
 
                         right.label("Allowed Deviation from Target:");
                         right.text_edit_singleline(&mut self.target_ox_fuel_deviation_text);
-                        self.target_ox_fuel_deviation = match self.target_ox_fuel_deviation_text.parse() {
-                            Ok(n) => n,
-                            Err(_) => self.target_ox_fuel_deviation
-                        };
+                        self.target_ox_fuel_deviation =
+                            match self.target_ox_fuel_deviation_text.parse() {
+                                Ok(n) => n,
+                                Err(_) => self.target_ox_fuel_deviation,
+                            };
 
-                        right.style_mut().visuals.code_bg_color = match self.field_histories.get("Ox/Fuel Ratio") {
-                            Some(hist) => {
-                                let points: Vec<f64> = hist
-                                    .as_points(Duration::from_secs(3))
-                                    .iter()
-                                    .map(|(_, val)| val.value.to_num())
-                                    .collect();
-                                let window = &points[points.len().saturating_sub(4) .. points.len()];
-                                let ratio = window.iter().sum::<f64>() / window.len() as f64;
-                                ox_fuel_color(self.target_ox_fuel_ratio, self.target_ox_fuel_deviation, ratio as _)
-                            }
-                            _ => Color32::from_rgb(0, 0, 0),
-                        };
+                        right.style_mut().visuals.code_bg_color =
+                            match self.field_histories.get("Ox/Fuel Ratio") {
+                                Some(hist) => {
+                                    let points: Vec<f64> = hist
+                                        .as_points(Duration::from_secs(3))
+                                        .iter()
+                                        .map(|(_, val)| val.value.to_num())
+                                        .collect();
+                                    let window =
+                                        &points[points.len().saturating_sub(4)..points.len()];
+                                    let ratio = window.iter().sum::<f64>() / window.len() as f64;
+                                    ox_fuel_color(
+                                        self.target_ox_fuel_ratio,
+                                        self.target_ox_fuel_deviation,
+                                        ratio as _,
+                                    )
+                                }
+                                _ => Color32::from_rgb(0, 0, 0),
+                            };
 
                         right.code("Ox/Fuel")
                     });
@@ -429,28 +433,40 @@ impl eframe::App for GuiApp {
 
                         None => {
                             if ui.button("Start Recording").clicked() {
-                                let names: Vec<String> = self.field_reciever.fields().map(|(k, _)| k.to_owned()).collect();
+                                let names: Vec<String> = self
+                                    .field_reciever
+                                    .fields()
+                                    .map(|(k, _)| k.to_owned())
+                                    .collect();
 
-                                if let Ok(record) = StandRecord::open(self.record_file_path.as_str(), names) {
+                                if let Ok(record) =
+                                    StandRecord::open(self.record_file_path.as_str(), names)
+                                {
                                     self.record_file = Some(record);
                                 } else {
-                                    log::error!("Failed to open record file at {}! Not Recording!", self.record_file_path);
+                                    log::error!(
+                                        "Failed to open record file at {}! Not Recording!",
+                                        self.record_file_path
+                                    );
                                 }
                             }
                         }
                     };
-
                 });
 
                 right.vertical(|ui| {
-                    self.make_fields_plot(ui, "upper".to_string(), Some(ui.available_height() / 2.1), None);
+                    self.make_fields_plot(
+                        ui,
+                        "upper".to_string(),
+                        Some(ui.available_height() / 2.1),
+                        None,
+                    );
 
                     ui.columns_const(|[left, right]| {
                         self.make_fields_plot(left, "left".to_string(), None, None);
-                        self.make_fields_plot(right, "right".to_string(),None, None);
+                        self.make_fields_plot(right, "right".to_string(), None, None);
                     });
                 });
-
 
                 // Left side:
                 egui::TopBottomPanel::top("Data Panel").show_inside(left, |ui| {
@@ -463,7 +479,7 @@ impl eframe::App for GuiApp {
                     Some(texture_handle) => {
                         left.add(
                             egui::Image::new(egui::load::SizedTexture::from_handle(texture_handle))
-                                .shrink_to_fit()
+                                .shrink_to_fit(),
                         );
                     }
                 }
@@ -475,7 +491,7 @@ impl eframe::App for GuiApp {
                                 left.centered_and_justified(|ui| {
                                     let res = ui.add(
                                         egui::Button::new(format!("Open {valve}"))
-                                            .min_size(egui::Vec2 { x: 32.0, y: 32.0 })
+                                            .min_size(egui::Vec2 { x: 32.0, y: 32.0 }),
                                     );
 
                                     if res.clicked() {
@@ -488,7 +504,7 @@ impl eframe::App for GuiApp {
                                 right.centered_and_justified(|ui| {
                                     let res = ui.add(
                                         egui::Button::new(format!("Close {valve}"))
-                                            .min_size(egui::Vec2 { x: 32.0, y: 32.0 })
+                                            .min_size(egui::Vec2 { x: 32.0, y: 32.0 }),
                                     );
 
                                     if res.clicked() {
@@ -533,17 +549,6 @@ impl eframe::App for GuiApp {
                         }
 
                         StandMode::PressurizationAndFiring => {
-                            ui.label("Enter time difference between NP1 and IP1 in firing sequence, positive times indicate that NP1 should open first, negative values indicate that IP1 should open first:");
-
-                            let valve_np1_ip1_offset_text_res =
-                                ui.text_edit_singleline(&mut self.valve_np1_ip1_offset_text);
-
-                            if let Ok(t) = self.valve_np1_ip1_offset_text.parse() {
-                                self.valve_np1_ip1_offset = t;
-                            } else if valve_np1_ip1_offset_text_res.lost_focus() {
-                                self.valve_np1_ip1_offset_text = "0".to_string();
-                            }
-
                             ui.label("\nEnter fire time:");
                             ui.horizontal(|ui| {
                                 let fire_time_text_res =
@@ -555,10 +560,25 @@ impl eframe::App for GuiApp {
                                     self.fire_time_text = "0".to_string();
                                 }
 
+                                ui.menu_button(self.selected_en.to_string(), |ui| {
+                                    if ui.button(ValveHandle::Engine1.to_string()).clicked() {
+                                        self.selected_en = ValveHandle::Engine1;
+                                    }
+
+                                    if ui.button(ValveHandle::Engine2.to_string()).clicked() {
+                                        self.selected_en = ValveHandle::Engine2;
+                                    }
+
+                                    if ui.button(ValveHandle::Engine3.to_string()).clicked() {
+                                        self.selected_en = ValveHandle::Engine3;
+                                    }
+                                });
+
                                 if ui
                                     .add(
                                         egui::Button::new("Fire")
-                                            .fill(Color32::from_rgb(64, 128, 64)),
+                                            .fill(Color32::from_rgb(64, 128, 64))
+                                            .min_size(ui.available_size()),
                                     )
                                     .clicked()
                                 {
@@ -577,7 +597,7 @@ impl eframe::App for GuiApp {
                                     let seq = CommandSequence::new()
                                         .then(Command::OpenValve(ValveHandle::Match))
                                         .then(Command::Wait(wait_time))
-                                        .then(Command::OpenValve(ValveHandle::Engine))
+                                        .then(Command::OpenValve(self.selected_en))
                                         .then(Command::Wait(self.fire_time))
                                         .then(Command::Wait(Duration::from_secs(3)))
                                         .then(Command::CloseValve(ValveHandle::NP2))
@@ -585,7 +605,7 @@ impl eframe::App for GuiApp {
                                         .then(Command::OpenValve(ValveHandle::NP3))
                                         .then(Command::OpenValve(ValveHandle::IP3))
                                         .then(Command::Wait(Duration::from_secs(2)))
-                                        .then(Command::CloseValve(ValveHandle::Engine))
+                                        .then(Command::CloseValve(self.selected_en))
                                         .then(Command::Done);
 
                                     if !self.serial_conn_has_died {

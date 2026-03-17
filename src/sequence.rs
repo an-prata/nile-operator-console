@@ -96,7 +96,7 @@ impl Command {
 }
 
 /// A "handle" to a valve present on the NILE test stand.
-#[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone, Copy)]
 pub enum ValveHandle {
     NP1,
     NP2,
@@ -105,7 +105,9 @@ pub enum ValveHandle {
     IP1,
     IP2,
     IP3,
-    Engine,
+    Engine1,
+    Engine2,
+    Engine3,
     Match,
 }
 
@@ -119,7 +121,9 @@ impl Display for ValveHandle {
             ValveHandle::IP1 => write!(f, "IP1"),
             ValveHandle::IP2 => write!(f, "IP2"),
             ValveHandle::IP3 => write!(f, "IP3"),
-            ValveHandle::Engine => write!(f, "ENG"),
+            ValveHandle::Engine1 => write!(f, "EN1"),
+            ValveHandle::Engine2 => write!(f, "EN2"),
+            ValveHandle::Engine3 => write!(f, "EN3"),
             ValveHandle::Match => write!(f, "MCH"),
         }
     }
