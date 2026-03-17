@@ -119,7 +119,8 @@ pub fn open_field_port(
 /// [`UsbSerialPortInfo`]: UsbSerialPortInfo
 pub fn open_port(port: &UsbSerialPortInfo, baud: u32) -> serialport::Result<Box<dyn SerialPort>> {
     serialport::new(port.port_name.as_str(), baud)
-        .flow_control(serialport::FlowControl::Hardware)
+        // .flow_control(serialport::FlowControl::Hardware)
+        .flow_control(serialport::FlowControl::Software)
         .timeout(Duration::from_secs(1))
         .open()
 }
