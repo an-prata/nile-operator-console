@@ -108,6 +108,8 @@ pub enum ValveHandle {
     Engine1,
     Engine2,
     Engine3,
+    TimingOx,
+    TimingFuel,
     Match,
 }
 
@@ -124,6 +126,8 @@ impl Display for ValveHandle {
             ValveHandle::Engine1 => write!(f, "EN1"),
             ValveHandle::Engine2 => write!(f, "EN2"),
             ValveHandle::Engine3 => write!(f, "EN3"),
+            ValveHandle::TimingOx => write!(f, "TMN"),
+            ValveHandle::TimingFuel => write!(f, "TMI"),
             ValveHandle::Match => write!(f, "MCH"),
         }
     }

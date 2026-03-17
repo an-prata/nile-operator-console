@@ -572,6 +572,14 @@ impl eframe::App for GuiApp {
                                     if ui.button(ValveHandle::Engine3.to_string()).clicked() {
                                         self.selected_en = ValveHandle::Engine3;
                                     }
+
+                                    if ui.button(ValveHandle::TimingOx.to_string()).clicked() {
+                                        self.selected_en = ValveHandle::TimingOx;
+                                    }
+
+                                    if ui.button(ValveHandle::TimingFuel.to_string()).clicked() {
+                                        self.selected_en = ValveHandle::TimingFuel;
+                                    }
                                 });
 
                                 if ui
@@ -582,34 +590,33 @@ impl eframe::App for GuiApp {
                                     )
                                     .clicked()
                                 {
-                                    // take time from op
-                                    //
-                                    // ignite ignitor
-                                    // wait some period of time
-                                    // open NP1 and IP1
-                                    // wait time from op
-                                    // wait three seconds
-                                    //
-                                    // close NP1 IP1 NP2 IP2 all at once
-                                    // open NP3 IP3 to vent
+                                    if self.selected_en == ValveHandle::TimingFuel {
+                                        self.field_reciever
+                                            .send_command(serial::ValveCommand::Open("TMI"))
+                                            .expect("Expected to be able to send command");
+                                    } else if self.selected_en == ValveHandle::TimingOx {
+                                        self.field_reciever
+                                            .send_command(serial::ValveCommand::Open("TMN"))
+                                            .expect("Expected to be able to send command");
+                                    } else {
+                                        let wait_time = Duration::from_secs(1);
+                                        let seq = CommandSequence::new()
+                                            .then(Command::OpenValve(ValveHandle::Match))
+                                            .then(Command::Wait(wait_time))
+                                            .then(Command::OpenValve(self.selected_en))
+                                            .then(Command::Wait(self.fire_time))
+                                            .then(Command::Wait(Duration::from_secs(3)))
+                                            .then(Command::CloseValve(ValveHandle::NP2))
+                                            .then(Command::CloseValve(ValveHandle::IP2))
+                                            .then(Command::OpenValve(ValveHandle::NP3))
+                                            .then(Command::OpenValve(ValveHandle::IP3))
+                                            .then(Command::Wait(Duration::from_secs(2)))
+                                            .then(Command::CloseValve(self.selected_en))
+                                            .then(Command::Done);
 
-                                    let wait_time = Duration::from_secs(1);
-                                    let seq = CommandSequence::new()
-                                        .then(Command::OpenValve(ValveHandle::Match))
-                                        .then(Command::Wait(wait_time))
-                                        .then(Command::OpenValve(self.selected_en))
-                                        .then(Command::Wait(self.fire_time))
-                                        .then(Command::Wait(Duration::from_secs(3)))
-                                        .then(Command::CloseValve(ValveHandle::NP2))
-                                        .then(Command::CloseValve(ValveHandle::IP2))
-                                        .then(Command::OpenValve(ValveHandle::NP3))
-                                        .then(Command::OpenValve(ValveHandle::IP3))
-                                        .then(Command::Wait(Duration::from_secs(2)))
-                                        .then(Command::CloseValve(self.selected_en))
-                                        .then(Command::Done);
-
-                                    if !self.serial_conn_has_died {
-                                        self.field_reciever.run_sequence_par(seq);
+                                        if !self.serial_conn_has_died {
+                                            self.field_reciever.run_sequence_par(seq);
+                                        }
                                     }
                                 }
                             });
