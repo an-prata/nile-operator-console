@@ -599,7 +599,7 @@ impl eframe::App for GuiApp {
                                             .send_command(serial::ValveCommand::Open("TMN"))
                                             .expect("Expected to be able to send command");
                                     } else {
-                                        let wait_time = Duration::from_secs(1);
+                                        let wait_time = Duration::from_millis(500);
                                         let seq = CommandSequence::new()
                                             .then(Command::OpenValve(ValveHandle::Match))
                                             .then(Command::Wait(wait_time))
